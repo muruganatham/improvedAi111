@@ -26,6 +26,7 @@ import { getFullSchemaPrompt } from "../agent-lib/tools/shared/schema-cache";
 import { loggers } from "../logging";
 import { getSmartRegistryContext } from "../agent-lib/smart-registry";
 import { findMatchingTemplate } from "../agent-lib/query-templates";
+import { PLACEMENT_SYSTEM_PROMPT } from "../agent-lib/placement-knowledge";
 
 // DeepSeek + AI SDK require at least one property in tool parameter schemas.
 // An empty z.object({}) causes "Invalid prompt: messages do not match ModelMessage[] schema".
@@ -93,7 +94,7 @@ agentRoutes.use("/chat", async (c, next) => {
 // ── Pre-router: classify question WITHOUT calling the LLM ────────────────────
 // Returns "general" → answer from knowledge, no DB access needed
 // Returns "db"      → needs real data from TiDB, use tools
-function preRouteQuestion(q: string): "general" | "db" | "greeting" {
+function preRouteQuestion(q: string): "general" | "db" | "greeting" | "placement" {
   const lower = q.toLowerCase().trim();
 
   // ── Signals for greeting ──
@@ -101,6 +102,21 @@ function preRouteQuestion(q: string): "general" | "db" | "greeting" {
     /^(hi|hello|hey|greetings|good morning|good afternoon|good evening)[^a-z0-9]*$/i
   ];
   if (greetingPatterns.some(p => p.test(lower))) return "greeting";
+
+  // ── Signals for placement/eligibility questions ──
+  const placementPatterns = [
+    /\beligib(le|ility)\b/, /\bplacement\b/, /\bcampus (drive|hiring|recruit)\b/,
+    /\bhiring\b/, /\brecruit(ment|ing)?\b/, /\bpackage\b/, /\bsalary\b/, /\blpa\b/,
+    /\bcutoff\b/, /\bcut.?off\b/, /\bbacklog\b/,
+    /\bcompan(y|ies)\b.*\b(eligib|criteria|require|cutoff)\b/,
+    /\b(eligib|criteria|require|cutoff)\b.*\bcompan(y|ies)\b/,
+    /\btier\s*[1-5]\b.*\bcompan/,
+    /\b(tcs|infosys|wipro|cognizant|google|amazon|microsoft|zoho|flipkart|accenture|capgemini)\b.*\b(eligib|criteria|cutoff|cgpa|percent)\b/,
+    /\b(eligib|criteria|cutoff|cgpa|percent)\b.*\b(tcs|infosys|wipro|cognizant|google|amazon|microsoft|zoho|flipkart|accenture|capgemini)\b/,
+    /which compan(y|ies) (can i|am i|i can)/,
+    /\bcan i (get into|apply|join)\b/,
+  ];
+  if (placementPatterns.some(p => p.test(lower))) return "placement";
 
   // ── Signals that are clearly advice/general knowledge (check FIRST) ──
   const advicePatterns = [
@@ -533,6 +549,25 @@ async function handleDbQuestion(
     const greetingMsg = `## 🤖 Devora AI Assistant\n**Always here to help**\n\nHello! I'm **Devora AI Assistant** — your intelligent database insights system for an online coding education platform.\n\n### 📊 Smart Insights I Can Provide:\n\n- 🔍 **Student Performance Analytics** — Scores, rankings, trends & anomaly detection\n- 🏆 **Cross-College Benchmarking** — Compare colleges, departments & batches side-by-side\n- 📈 **Progress & Trend Analysis** — Track improvement across semesters\n- 🎓 **Course Insights** — Enrollment patterns, completion rates & topic breakdowns\n- 🎯 **Actionable Intelligence** — Top performers, at-risk students & course effectiveness\n- 🔗 **Deep Drill-Down** — From platform overview → college → department → student\n\n### 💡 Try asking me:\n- *"Show me a performance comparison across all colleges"*\n- *"Who are the top 10 students in SREC?"*\n- *"What courses have the highest enrollment?"*\n- *"Give me a complete overview of SKCET"*\n\nWhat insights would you like to explore today?`;
 
     return { report: greetingMsg, sql: null, steps: 0 };
+  }
+
+  if (route === "placement") {
+    try {
+      const result = await generateText({
+        model: reasonerModel,
+        system: PLACEMENT_SYSTEM_PROMPT,
+        messages: [
+          ...(history as any),
+          { role: "user" as const, content: question.trim() + `\n\nUser context: user_id = ${userId}, user_role = ${userRole ?? "unknown"}` }
+        ],
+        temperature: 0.3,
+      });
+      return { report: result.text?.trim() || "I couldn't generate placement advice.", sql: null, steps: 1 };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`Placement path error (${options.version})`, { error: msg });
+      throw new Error(msg);
+    }
   }
 
   if (route === "general") {
