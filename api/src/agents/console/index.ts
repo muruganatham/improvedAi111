@@ -11,8 +11,8 @@ import type { ConsoleDataV2 } from "../../agent-lib/types";
 
 export const consoleAgentMeta: AgentMeta = {
   id: "console",
-  name: "Console Assistant",
-  description: "Helps write and run database queries",
+  name: "Devora AI Assistant",
+  description: "Always here to help",
   tabKinds: ["console"],
   enabled: true,
 };

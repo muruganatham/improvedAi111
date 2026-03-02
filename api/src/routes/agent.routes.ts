@@ -93,8 +93,14 @@ agentRoutes.use("/chat", async (c, next) => {
 // ── Pre-router: classify question WITHOUT calling the LLM ────────────────────
 // Returns "general" → answer from knowledge, no DB access needed
 // Returns "db"      → needs real data from TiDB, use tools
-function preRouteQuestion(q: string): "general" | "db" {
+function preRouteQuestion(q: string): "general" | "db" | "greeting" {
   const lower = q.toLowerCase().trim();
+
+  // ── Signals for greeting ──
+  const greetingPatterns = [
+    /^(hi|hello|hey|greetings|good morning|good afternoon|good evening)[^a-z0-9]*$/i
+  ];
+  if (greetingPatterns.some(p => p.test(lower))) return "greeting";
 
   // ── Signals that are clearly advice/general knowledge (check FIRST) ──
   const advicePatterns = [
@@ -160,7 +166,7 @@ function preRouteQuestion(q: string): "general" | "db" {
 }
 
 // ── System prompt for general knowledge questions ─────────────────────────────
-const GENERAL_KNOWLEDGE_PROMPT = `You are a helpful assistant for Mako — an online coding education platform.
+const GENERAL_KNOWLEDGE_PROMPT = `You are Devora AI Assistant  and online coding education platform. Always here to help.
 The user has asked a general knowledge or conceptual question (not a data query).
 Answer clearly and thoroughly in Markdown format.
 - Use ## heading to title your response
@@ -168,12 +174,23 @@ Answer clearly and thoroughly in Markdown format.
 - For programming topics, include a short code example in a fenced code block
 - Add practical context for how it applies to software development
 - End with 1-2 sentences on real-world relevance
+- When relevant, suggest how the user can explore related data on the platform
 Keep it educational and engaging. This is NOT a database question — do not try to query anything.`;
 
 
 
 // ── System prompt for DB questions (injected before live schema) ──────────────
-const DB_SYSTEM_PREAMBLE = `You are a Database Console Assistant for Mako — an online coding education platform powered by TiDB (MySQL compatible).
+const DB_SYSTEM_PREAMBLE = `You are Devora AI Assistant — an intelligent database insights system for an online coding education platform Amypo. Always here to help.
+
+You provide **innovative database insights** including:
+- 📊 **Smart Analytics**: Performance trends, score distributions, and progress tracking
+- 🔍 **Anomaly Detection**: Identify unusual patterns like sudden score drops, inactive students, or enrollment spikes
+- 🏆 **Cross-College Benchmarking**: Compare colleges, departments, and batches side-by-side
+- 📈 **Trend Analysis**: Track improvement over semesters, identify growth patterns
+- 🎯 **Actionable Insights**: Highlight top performers, at-risk students, and course effectiveness
+- 🔗 **Deep Drill-Down**: Navigate from overview → college → department → batch → individual student
+
+When answering, always try to go beyond raw numbers — provide context, comparisons, and recommendations where possible.
 
 ## ⛔ CRITICAL RULES (TOP PRIORITY — NEVER BREAK)
 
@@ -411,7 +428,7 @@ function getReportPrompt(totalRows: number): string {
 Question: "How many students are there?"
 Data: [{ total: 4021 }, { enrolled: 3132 }, { with_academics: 3728 }]
 Report:
-There are **4,021 active students** on the Mako platform.
+There are **4,021 active students** Amypo platform.
 | Metric | Count |
 |--------|-------|
 | Total Active Students | 4,021 |
@@ -511,6 +528,12 @@ async function handleDbQuestion(
   const route = preRouteQuestion(question.trim());
 
   logger.info(`Agent chat (${options.version})`, { userId, route, question: question.slice(0, 80) });
+
+  if (route === "greeting") {
+    const greetingMsg = `## 🤖 Devora AI Assistant\n**Always here to help**\n\nHello! I'm **Devora AI Assistant** — your intelligent database insights system for an online coding education platform.\n\n### 📊 Smart Insights I Can Provide:\n\n- 🔍 **Student Performance Analytics** — Scores, rankings, trends & anomaly detection\n- 🏆 **Cross-College Benchmarking** — Compare colleges, departments & batches side-by-side\n- 📈 **Progress & Trend Analysis** — Track improvement across semesters\n- 🎓 **Course Insights** — Enrollment patterns, completion rates & topic breakdowns\n- 🎯 **Actionable Intelligence** — Top performers, at-risk students & course effectiveness\n- 🔗 **Deep Drill-Down** — From platform overview → college → department → student\n\n### 💡 Try asking me:\n- *"Show me a performance comparison across all colleges"*\n- *"Who are the top 10 students in SREC?"*\n- *"What courses have the highest enrollment?"*\n- *"Give me a complete overview of SKCET"*\n\nWhat insights would you like to explore today?`;
+
+    return { report: greetingMsg, sql: null, steps: 0 };
+  }
 
   if (route === "general") {
     try {
@@ -713,7 +736,7 @@ JSON only:` }],
     };
 
     let executedSql = "";
-    let sqlResultsList: any[] = [];
+    const sqlResultsList: any[] = [];
     let stepsCount = 0;
 
     const messagesArray = [
