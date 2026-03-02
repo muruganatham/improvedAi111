@@ -34,12 +34,7 @@ export const openApiSpec = {
                     description: "The user's natural-language question",
                     example: "How many students passed this semester?",
                   },
-                  model: {
-                    type: "string",
-                    description: "AI model to use",
-                    default: "deepseek-chat",
-                    example: "deepseek-chat",
-                  },
+
                   user_id: {
                     type: "integer",
                     description: "ID of the requesting user (for role-based filtering)",
@@ -62,7 +57,6 @@ export const openApiSpec = {
                   summary: "Basic question",
                   value: {
                     question: "How many students are in the database?",
-                    model: "deepseek-chat",
                     user_id: 35,
                     user_role: 7,
                   },
@@ -114,12 +108,7 @@ export const openApiSpec = {
                     description: "The user's natural-language question",
                     example: "Who is the best student in SREC?",
                   },
-                  model: {
-                    type: "string",
-                    description: "AI model to use",
-                    default: "deepseek-chat",
-                    example: "deepseek-chat",
-                  },
+
                   user_id: {
                     type: "integer",
                     description: "ID of the requesting user",
