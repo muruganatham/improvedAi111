@@ -698,7 +698,7 @@ JSON only:` }],
     let executedSql = "";
     let sqlResultsList: any[] = [];
     let stepsCount = 0;
-    const TIMEOUT_MS = 30_000;
+    const TIMEOUT_MS = 120_000;
 
     const messagesArray = [
       ...(history as any),
@@ -723,7 +723,7 @@ JSON only:` }],
       const result = await Promise.race([
         resultPromise,
         new Promise<any>((_, reject) =>
-          setTimeout(() => reject(new Error("Agent timed out after 30s")), TIMEOUT_MS)
+          setTimeout(() => reject(new Error("Agent timed out after 120s")), TIMEOUT_MS)
         )
       ]);
 
@@ -769,7 +769,7 @@ ${allDataJson.slice(0, 12000)}${allDataJson.length > 12000 ? "\n...(truncated to
     const reportResult = await Promise.race([
       reportResultPromise,
       new Promise<any>((_, reject) =>
-        setTimeout(() => reject(new Error("Agent timed out after 30s")), TIMEOUT_MS)
+        setTimeout(() => reject(new Error("Agent timed out after 120s")), TIMEOUT_MS)
       )
     ]);
 
