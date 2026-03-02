@@ -705,56 +705,7 @@ JSON only:` }],
       { role: "user" as const, content: preprocessQuestion(question.trim()) }
     ];
 
-    if (options.version === 'v1') {
-      let isComplete = false;
-      const coreMessages = [...messagesArray];
-
-      while (stepsCount < 8 && !isComplete) {
-        stepsCount++;
-
-        const resultPromise = generateText({
-          model: chatModel,
-          system: systemPrompt,
-          messages: coreMessages,
-          tools,
-          temperature: 0,
-        });
-
-        const result = await Promise.race([
-          resultPromise,
-          new Promise<any>((_, reject) =>
-            setTimeout(() => reject(new Error("Agent timed out after 30s")), TIMEOUT_MS)
-          )
-        ]);
-
-        coreMessages.push(result.response.messages[0]);
-        const toolCalls = result.toolCalls || [];
-
-        if (toolCalls.length === 0) {
-          isComplete = true;
-          if (sqlResultsList.length === 0 && result.text?.trim()) {
-            return { report: result.text.trim(), sql: null, steps: stepsCount };
-          }
-          break;
-        }
-
-        const toolResults = await Promise.all(toolCalls.map(async (call: any) => {
-          let toolRes;
-          try {
-            toolRes = await (tools as any)[call.toolName].execute(call.args);
-          } catch (e) {
-            toolRes = { error: String(e) };
-          }
-          if (call.toolName === "run_sql" && !toolRes.error && toolRes.rows) {
-            sqlResultsList.push({ sql: (call.args as any).sql || (call.args as any).query, data: toolRes.rows.slice(0, 100) });
-            executedSql += ((call.args as any).sql || (call.args as any).query) + ";\n";
-          }
-          return { toolCallId: call.toolCallId, result: toolRes };
-        }));
-
-        coreMessages.push({ role: "tool", content: toolResults as any });
-      }
-    } else {
+    {
       const resultPromise = generateText({
         model: chatModel,
         system: systemPrompt,
