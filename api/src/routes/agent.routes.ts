@@ -16,6 +16,7 @@
 
 import { Hono } from "hono";
 import { generateText, tool, stepCountIs } from "ai";
+import { appendFileSync } from "fs";
 import { z } from "zod";
 import { createOpenAI } from "@ai-sdk/openai";
 import { getAvailableModels } from "../agent-lib/ai-models";
@@ -397,7 +398,7 @@ JSON only:` }],
     try {
       const raw = (understandingResult.text || "").replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
       questionContext = JSON.parse(raw);
-    } catch (parseErr) {
+    } catch (_parseErr) {
       logger.warn("Failed to parse question context, using defaults", { text: understandingResult.text?.slice(0, 200) });
     }
     logger.info("Question Context Analyzed:", questionContext);
@@ -556,14 +557,14 @@ JSON only:` }],
       temperature: 0,
       onStepFinish: (step) => {
         const trace = `\n[AI STEP] completed. Tool calls: ${JSON.stringify(step.toolCalls)}\nResults: ${JSON.stringify(step.toolResults)}\n`;
-        require('fs').appendFileSync('ai_trace.log', trace);
+        appendFileSync('ai_trace.log', trace);
         logger.info(trace);
       }
     });
 
     // Extract SQL and results from the SDK's internal steps
     let executedSql = "";
-    let sqlResultsList: any[] = []; // Phase 3: Accumulate multiple datasets
+    const sqlResultsList: any[] = []; // Phase 3: Accumulate multiple datasets
     const stepsCount = result.steps?.length ?? 1;
 
     for (const step of result.steps ?? []) {
