@@ -282,11 +282,13 @@ Rule 5: Think about what could go wrong
 - Only after 3 failed attempts should you report failure to the user.
 - Common fixes: check table name spelling, verify column exists via \`describe_table\`, check JSON key path.
 
-## Role Values in \`users.role\`:
-7=Student, 4=Staff, 5=Trainer, 6=ContentCreator, 3=CollegeAdmin, 2=Admin, 1=SuperAdmin
-
-## Key Relationships:
-- Students linked to college via course_wise_segregations (NOT directly in users).
+## 📖 BUSINESS CONTEXT & DEFINITIONS (READ CAREFULLY)
+- **Status:** \`status = 1\` ALWAYS means Active. You must filter by \`status = 1\` for almost all queries regarding users or enrollments.
+- **Roles:** 7=Student, 4=Staff, 5=Trainer, 6=ContentCreator, 3=CollegeAdmin, 2=Admin, 1=SuperAdmin.
+- **Course Allocations (Marketplace vs Institutional):**
+  - \`course_wise_segregations\` represents INSTITUTIONAL/COLLEGE allocations (bulk assignments to colleges).
+  - \`user_course_enrollments\` mostly represents MARKETPLACE allocations (self-service individual enrollments).
+- **Key Relationships:** Students are linked to their respective college exams/courses via \`course_wise_segregations\` (NOT directly in the \`users\` table).
 
 ` + getSmartRegistryContext();
 
