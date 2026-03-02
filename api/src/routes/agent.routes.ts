@@ -369,83 +369,74 @@ IMPORTANT: When asked about topics/subtopics of a course, query ALL rows — do 
 7. course_academic_maps.db column tells which test tables to use
 ` + getSmartRegistryContext();
 
-// ── Report generation system prompt ───────────────────────────────────────────
-const REPORT_SYSTEM_PROMPT = `You are a data analyst.Generate a brief report from SQL results.
+// ── Report generation system prompt (dynamic word budget) ─────────────────────
+function getReportPrompt(totalRows: number): string {
+  let wordBudget: number;
+  if (totalRows <= 1) wordBudget = 50;
+  else if (totalRows <= 5) wordBudget = 150;
+  else if (totalRows <= 20) wordBudget = 400;
+  else wordBudget = 800;
+
+  return `You are a data analyst. Generate a report from SQL results.
 ## FORMAT RULES(STRICT):
-1. START with a direct one - line answer to the question
+1. START with a direct one-line answer to the question
    ✅ "There are 4,021 active students on the platform."
    ❌ "This analysis explores the active student population..."
-2. Show data as a CLEAN markdown table
+2. Include ALL rows from the data in a CLEAN markdown table — NEVER skip or summarize rows
   - No extra columns
-    - Round percentages to 2 decimal places
-      - Use | alignment
-3. Add 3 - 4 KEY INSIGHTS only(short bullet points)
+  - Round percentages to 2 decimal places
+  - Use | alignment
+  - If there are 23 rows, show ALL 23. If there are 5 rows, show ALL 5.
+3. Add 3-4 KEY INSIGHTS only (short bullet points)
    ✅ "SREC has the most tests (7,582) but lowest coding score (63.92%)"
-   ❌ "The data shows that having academic information is more common (3,728) than being course-enrolled (3,132), suggesting students often complete their profiles before or without enrolling."
+   ❌ Long explanatory sentences
 4. DO NOT include:
    ❌ "Context" paragraph
    ❌ "About Data Segmentation" or any educational paragraphs
-   ❌ "Recommendations"(unless user specifically asks)
-   ❌ Emojis on every bullet point
+   ❌ "Recommendations" (unless user specifically asks)
    ❌ Generic business advice
-   ❌ Sentences longer than 20 words
-   ❌ "Here are the results for your question! The query is ready in the console."(Just answer directly)
+   ❌ "Here are the results for your question!" (Just answer directly)
 5. ANSWER ONLY WHAT WAS ASKED
-  - If user asks for count, give count + table + 3 insights.Do not add extra fluff.
-6. KEEP IT FOCUSED
-  - Maximum 500 words
-    - If the answer is a single number, say it in ONE line
-      - Users want ANSWERS, not essays
-7. PRESENT ALL DATA ROWS — NEVER summarize or truncate rows from the query results
-  - If there are 23 rows, show ALL 23 in the table
-    - Group by category/section if applicable
+  - If user asks for count, give count + table + 3 insights
+6. INCLUDE ALL DATA ROWS — Never truncate or summarize
+  - Word budget for this response: ~${wordBudget} words
+  - If the answer is a single number, say it in ONE line
+  - If there are many rows, group by category/section if applicable
+  - Users want COMPLETE ANSWERS, not summaries
+
 ## EXAMPLE — Good Report:
 Question: "How many students are there?"
 Data: [{ total: 4021 }, { enrolled: 3132 }, { with_academics: 3728 }]
 Report:
-There are ** 4,021 active students ** on the Mako platform.
+There are **4,021 active students** on the Mako platform.
 | Metric | Count |
-| --------| -------|
+|--------|-------|
 | Total Active Students | 4,021 |
-| Enrolled in Courses | 3, 132(78 %) |
-| With Academic Profile | 3, 728(93 %) |
-** Key Insights:**
-  - 93 % of students have completed their academic profile
-    - 889 students(22 %) are registered but not enrolled in any course
-      - 293 students are missing academic information
+| Enrolled in Courses | 3,132 (78%) |
+| With Academic Profile | 3,728 (93%) |
+**Key Insights:**
+- 93% of students have completed their academic profile
+- 889 students (22%) are registered but not enrolled in any course
+- 293 students are missing academic information
+
 ## EXAMPLE — Ranking Report:
 Question: "Top 5 SREC students?"
 Report:
-The top performing SREC student is ** AKSHAYA PRIYA S ** with 95.13 % overall.
+The top performing SREC student is **AKSHAYA PRIYA S** with 95.13% overall.
 | Rank | Student | Coding | MCQ | Overall |
-| ------| ---------| --------| -----| ---------|
-| 1 | AKSHAYA PRIYA S | 95.51 % | 84.00 % | 95.13 % |
-| 2 | Joshika S | 91.28 % | 93.94 % | 91.35 % |
-| 3 | MANICKAVEL ARASI S | 91.53 % | 84.00 % | 91.34 % |
-| 4 | Priyadharshini R | 91.00 % | 96.97 % | 91.12 % |
-| 5 | ARAVINDHAN T | 91.90 % | 64.00 % | 91.07 % |
-** Key Insights:**
-  - AKSHAYA PRIYA S dominates with 95.51 % coding score
-    - Priyadharshini R has the highest MCQ(96.97 %) but coding brings her to #4
-      - ARAVINDHAN T has strong coding(91.90 %) but weakest MCQ(64 %)
-## EXAMPLE — Student Profile Report:
-Question: "Tell about SUTHIL T"
-Report:
-** SUTHIL T ** (727824TUIO052) is a SKCT student ranked **#2 out of 883 ** with a perfect 100 % project score.
-| Field | Detail |
-| -------| --------|
-| College | Sri Krishna College of Technology(SKCT) |
-| Department | BE CSE - Internet of Things |
-| Batch | 2024 - 2028 |
-| Tests Taken | 1(Project - based) |
-| Project Score | 30 / 30 = 100 % ⭐ |
-| College Rank | #2 out of 883(Top 0.2 %) |
-| College Average | 11.97 % |
-** Key Insights:**
-  - Perfect score on his only project test
-    - 8.35x above college average
-      - SKCT only has project assessments — no coding / MCQ tests yet
-NOW generate a report following these rules.Be CONCISE.`;
+|------|---------|--------|-----|---------|
+| 1 | AKSHAYA PRIYA S | 95.51% | 84.00% | 95.13% |
+| 2 | Joshika S | 91.28% | 93.94% | 91.35% |
+| 3 | MANICKAVEL ARASI S | 91.53% | 84.00% | 91.34% |
+| 4 | Priyadharshini R | 91.00% | 96.97% | 91.12% |
+| 5 | ARAVINDHAN T | 91.90% | 64.00% | 91.07% |
+**Key Insights:**
+- AKSHAYA PRIYA S dominates with 95.51% coding score
+- Priyadharshini R has the highest MCQ (96.97%) but coding brings her to #4
+- ARAVINDHAN T has strong coding (91.90%) but weakest MCQ (64%)
+
+NOW generate a report following these rules. Present ALL data rows.`;
+}
 
 // ── SQL Validation Helper ───────────────────────────────────────────────────────
 function validateSQL(sql: string, context?: { type: string }): string[] {
@@ -775,7 +766,7 @@ ${allDataJson.slice(0, 12000)}${allDataJson.length > 12000 ? "\n...(truncated to
 
     const reportResult = await generateText({
       model: reasonerModel,
-      system: REPORT_SYSTEM_PROMPT,
+      system: getReportPrompt(totalRows),
       messages: [
         ...(history as any),
         { role: "user" as const, content: reportUserPrompt }
