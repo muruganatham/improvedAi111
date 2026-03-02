@@ -170,6 +170,8 @@ Answer clearly and thoroughly in Markdown format.
 - End with 1-2 sentences on real-world relevance
 Keep it educational and engaging. This is NOT a database question — do not try to query anything.`;
 
+
+
 // ── System prompt for DB questions (injected before live schema) ──────────────
 const DB_SYSTEM_PREAMBLE = `You are a Database Console Assistant for Mako — an online coding education platform powered by TiDB (MySQL compatible).
 
@@ -289,28 +291,79 @@ Rule 5: Think about what could go wrong
 ` + getSmartRegistryContext();
 
 // ── Report generation system prompt ───────────────────────────────────────────
-const REPORT_SYSTEM_PROMPT = `You are a Database Console Assistant for Mako — an online coding education platform.
-You already explored the database, wrote the SQL, tested it, and got the ACTUAL RESULTS.
-
-## 🚨 CRITICAL RULE: FACT-BASED REPORTING (ZERO HALLUCINATION) 🚨
-- You MUST write your report based ONLY on the actual query results provided to you.
-- NEVER invent, hallucinate, or guess numbers, insights, or rankings that are not fully visible in the JSON data.
-- If the data is empty or missing something, state that it is missing. Do not make it up.
-
-Write a DETAILED, WELL-STRUCTURED Markdown report:
-
-First line MUST be: "Here are the results for your question! The query is ready in the console."
-
-Then:
-- ## heading with relevant emoji
-- **Context**: 2-3 sentences about what this data represents
-- COMPLETE Markdown table of ALL data rows (never truncate)
-- **🔑 Key Insights** — 4-6 specific bullet points (top performer, patterns, anomalies, college dominance). THESE MUST BE SOURCED DIRECTLY FROM THE DATA.
-- **🔬 About [Technology]** — if question involves a tech topic, 3-4 sentences on it
-- **💡 Recommendations** — 2-3 actionable suggestions
-- Use 🥇🥈🥉 medals for top 3 in ranking queries
-- Use emojis throughout
-- Be thorough — comprehensive is always better`;
+const REPORT_SYSTEM_PROMPT = `You are a data analyst. Generate a brief report from SQL results.
+## FORMAT RULES (STRICT):
+1. START with a direct one-line answer to the question
+   ✅ "There are 4,021 active students on the platform."
+   ❌ "This analysis explores the active student population..."
+2. Show data as a CLEAN markdown table
+   - No extra columns
+   - Round percentages to 2 decimal places
+   - Use | alignment
+3. Add 3-4 KEY INSIGHTS only (short bullet points)
+   ✅ "SREC has the most tests (7,582) but lowest coding score (63.92%)"
+   ❌ "The data shows that having academic information is more common (3,728) than being course-enrolled (3,132), suggesting students often complete their profiles before or without enrolling."
+4. DO NOT include:
+   ❌ "Context" paragraph
+   ❌ "About Data Segmentation" or any educational paragraphs
+   ❌ "Recommendations" (unless user specifically asks)
+   ❌ Emojis on every bullet point
+   ❌ Generic business advice
+   ❌ Sentences longer than 20 words
+   ❌ "Here are the results for your question! The query is ready in the console." (Just answer directly)
+5. ANSWER ONLY WHAT WAS ASKED
+   - If user asks for count, give count + table + 3 insights. Do not add extra fluff.
+6. KEEP IT SHORT
+   - Maximum 150 words
+   - If the answer is a single number, say it in ONE line
+   - Users want ANSWERS, not essays
+## EXAMPLE — Good Report:
+Question: "How many students are there?"
+Data: [{total: 4021}, {enrolled: 3132}, {with_academics: 3728}]
+Report:
+There are **4,021 active students** on the Mako platform.
+| Metric | Count |
+|--------|-------|
+| Total Active Students | 4,021 |
+| Enrolled in Courses | 3,132 (78%) |
+| With Academic Profile | 3,728 (93%) |
+**Key Insights:**
+- 93% of students have completed their academic profile
+- 889 students (22%) are registered but not enrolled in any course
+- 293 students are missing academic information
+## EXAMPLE — Ranking Report:
+Question: "Top 5 SREC students?"
+Report:
+The top performing SREC student is **AKSHAYA PRIYA S** with 95.13% overall.
+| Rank | Student | Coding | MCQ | Overall |
+|------|---------|--------|-----|---------|
+| 1 | AKSHAYA PRIYA S | 95.51% | 84.00% | 95.13% |
+| 2 | Joshika S | 91.28% | 93.94% | 91.35% |
+| 3 | MANICKAVEL ARASI S | 91.53% | 84.00% | 91.34% |
+| 4 | Priyadharshini R | 91.00% | 96.97% | 91.12% |
+| 5 | ARAVINDHAN T | 91.90% | 64.00% | 91.07% |
+**Key Insights:**
+- AKSHAYA PRIYA S dominates with 95.51% coding score
+- Priyadharshini R has the highest MCQ (96.97%) but coding brings her to #4
+- ARAVINDHAN T has strong coding (91.90%) but weakest MCQ (64%)
+## EXAMPLE — Student Profile Report:
+Question: "Tell about SUTHIL T"
+Report:
+**SUTHIL T** (727824TUIO052) is a SKCT student ranked **#2 out of 883** with a perfect 100% project score.
+| Field | Detail |
+|-------|--------|
+| College | Sri Krishna College of Technology (SKCT) |
+| Department | BE CSE - Internet of Things |
+| Batch | 2024-2028 |
+| Tests Taken | 1 (Project-based) |
+| Project Score | 30/30 = 100% ⭐ |
+| College Rank | #2 out of 883 (Top 0.2%) |
+| College Average | 11.97% |
+**Key Insights:**
+- Perfect score on his only project test
+- 8.35x above college average
+- SKCT only has project assessments — no coding/MCQ tests yet
+NOW generate a report following these rules. Be CONCISE.`;
 
 // ── SQL Validation Helper ───────────────────────────────────────────────────────
 function validateSQL(sql: string): string[] {
@@ -415,7 +468,10 @@ JSON only:` }],
     let strategy = "";
     switch (questionContext.type) {
       case "count":
-        strategy = "STRATEGY: You only need to run a single aggregation query (e.g. COUNT(*)).";
+        strategy = `STRATEGY: You MUST use a single, simple, combined SQL query! 
+        DO NOT use UNION ALL for count aggregations. DO NOT write 18 subqueries. DO NOT query every single table.
+        Example: SELECT (SELECT COUNT(*) FROM users WHERE role = 7 AND status = 1) AS total,
+                 (SELECT COUNT(DISTINCT user_id) FROM course_wise_segregations WHERE user_role = 7 AND status = 1) AS enrolled;`;
         break;
       case "ranking":
         strategy = "STRATEGY: You only need to run one big query using UNION ALL across all necessary college tables.";
@@ -599,7 +655,7 @@ ${allDataJson.slice(0, 12000)}${allDataJson.length > 12000 ? "\n...(truncated to
       model: reasonerModel,
       system: REPORT_SYSTEM_PROMPT,
       messages: [{ role: "user" as const, content: reportUserPrompt }],
-      temperature: 0.3,
+      temperature: 0,
     });
 
     const finalReport = reportResult.text?.trim() || `## Results\n\n${allDataJson}`;
@@ -695,7 +751,10 @@ JSON only:` }],
     let strategy = "";
     switch (questionContext.type) {
       case "count":
-        strategy = "STRATEGY: You only need to run a single aggregation query (e.g. COUNT(*)).";
+        strategy = `STRATEGY: You MUST use a single, simple, combined SQL query! 
+        DO NOT use UNION ALL for count aggregations. DO NOT write 18 subqueries. DO NOT query every single table.
+        Example: SELECT (SELECT COUNT(*) FROM users WHERE role = 7 AND status = 1) AS total,
+                 (SELECT COUNT(DISTINCT user_id) FROM course_wise_segregations WHERE user_role = 7 AND status = 1) AS enrolled;`;
         break;
       case "ranking":
         strategy = "STRATEGY: You only need to run one big query using UNION ALL across all necessary college tables.";
@@ -872,7 +931,7 @@ ${allDataJson.slice(0, 12000)}${allDataJson.length > 12000 ? "\n...(truncated to
       model: reasonerModel,
       system: REPORT_SYSTEM_PROMPT,
       messages: [{ role: "user" as const, content: reportUserPrompt }],
-      temperature: 0.3,
+      temperature: 0,
     });
 
     const finalReport = reportResult.text?.trim() || `## Results\n\n${allDataJson}`;
