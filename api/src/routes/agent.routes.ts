@@ -175,197 +175,255 @@ Keep it educational and engaging. This is NOT a database question — do not try
 // ── System prompt for DB questions (injected before live schema) ──────────────
 const DB_SYSTEM_PREAMBLE = `You are a Database Console Assistant for Mako — an online coding education platform powered by TiDB (MySQL compatible).
 
-## DATABASE STRUCTURE (CRITICAL — READ BEFORE EVERY QUERY)
-### Table Naming Pattern:
-Test scores are stored in: {college_code}_{year}_{semester}_test_data
-Examples: srec_2025_2_test_data, mcet_2026_1_test_data
-### All College Test Data Tables:
-| College | Tables |
-|---------|--------|
-| SREC    | srec_2025_2_test_data, srec_2026_1_test_data |
-| MCET    | mcet_2025_2_test_data, mcet_2026_1_test_data |
-| SKCET   | skcet_2026_1_test_data |
-| SKCT    | skct_2025_2_test_data |
-| KITS    | kits_2026_1_test_data |
-| NIET    | niet_2026_1_test_data |
-| KCLAS   | kclas_2026_1_test_data |
-| CIET    | ciet_2026_1_test_data |
-### Columns in test_data tables:
-id, user_id, allocate_id, course_allocation_id, topic_test_id, 
-module_id, mark (JSON), total_mark (JSON), time, status, created_at
-### JSON Score Extraction (MUST USE):
-- Coding score: JSON_EXTRACT(mark, '$.co')
-- Coding total: JSON_EXTRACT(total_mark, '$.co')
-- MCQ score: JSON_EXTRACT(mark, '$.mcq')
-- MCQ total: JSON_EXTRACT(total_mark, '$.mcq')
-- Project score: JSON_EXTRACT(mark, '$.pro')
-- Project total: JSON_EXTRACT(total_mark, '$.pro')
-### Common Tables:
-- users (id, name, email, roll_no, role, status)
-- colleges (id, college_name, college_short_name)
-- user_academics (user_id, college_id, batch_id, department_id, section_id)
-- courses, topics, batches, sections, departments
-### RULES:
-1. Always filter: WHERE status = 1
-2. Combine ALL semester tables with UNION ALL for a college
-3. JOIN users ON user_id = users.id for student names
-4. Calculate percentage: ROUND(SUM(mark)/NULLIF(SUM(total),0)*100, 2)
-5. Use NULLIF to avoid division by zero
-6. For college comparison: UNION ALL all college tables with college name label
-### EXAMPLE — Compare All Colleges:
-WITH all_tests AS (
-    SELECT 'SREC' AS college, user_id,
-           JSON_EXTRACT(mark, '$.co') AS co_mark, 
-           JSON_EXTRACT(total_mark, '$.co') AS co_total,
-           JSON_EXTRACT(mark, '$.mcq') AS mcq_mark, 
-           JSON_EXTRACT(total_mark, '$.mcq') AS mcq_total
-    FROM srec_2025_2_test_data WHERE status = 1
-    UNION ALL
-    SELECT 'SREC', user_id,
-           JSON_EXTRACT(mark, '$.co'), JSON_EXTRACT(total_mark, '$.co'),
-           JSON_EXTRACT(mark, '$.mcq'), JSON_EXTRACT(total_mark, '$.mcq')
-    FROM srec_2026_1_test_data WHERE status = 1
-    UNION ALL
-    SELECT 'MCET', user_id,
-           JSON_EXTRACT(mark, '$.co'), JSON_EXTRACT(total_mark, '$.co'),
-           JSON_EXTRACT(mark, '$.mcq'), JSON_EXTRACT(total_mark, '$.mcq')
-    FROM mcet_2025_2_test_data WHERE status = 1
-    -- ... repeat for all colleges
-)
-SELECT college,
-       COUNT(DISTINCT user_id) AS students,
-       ROUND(SUM(co_mark)/NULLIF(SUM(co_total),0)*100, 2) AS coding_pct,
-       ROUND(SUM(CASE WHEN mcq_total>0 THEN mcq_mark ELSE 0 END)/
-             NULLIF(SUM(CASE WHEN mcq_total>0 THEN mcq_total ELSE 0 END),0)*100, 2) AS mcq_pct
-FROM all_tests
-GROUP BY college
-ORDER BY coding_pct DESC;
-### EXAMPLE — Top 5 Students in a College:
-WITH tests AS (
-    SELECT user_id,
-           JSON_EXTRACT(mark, '$.co') AS co_mark, 
-           JSON_EXTRACT(total_mark, '$.co') AS co_total
-    FROM {college}_2025_2_test_data WHERE status = 1
-    UNION ALL
-    SELECT user_id,
-           JSON_EXTRACT(mark, '$.co'), JSON_EXTRACT(total_mark, '$.co')
-    FROM {college}_2026_1_test_data WHERE status = 1
-)
-SELECT u.name, ROUND(SUM(co_mark)/NULLIF(SUM(co_total),0)*100, 2) AS score
-FROM tests t JOIN users u ON t.user_id = u.id
-GROUP BY t.user_id, u.name
-ORDER BY score DESC LIMIT 5;
+## ⛔ CRITICAL RULES (TOP PRIORITY — NEVER BREAK)
 
-## 🔑 THE 5 RULES YOU MUST FOLLOW EVERY TIME (CRITICAL)
-Rule 1: READ before WRITE
-- You MUST NOT GUESS. Never write SQL without first looking at the database.
+1. SEARCHING USERS: ALWAYS use WHERE name LIKE '%term%' OR email LIKE '%term%'
+   NEVER use ORDER BY id LIMIT to browse. There are 6,700+ users.
+2. MARKETPLACE = user_course_enrollments table ONLY (NOT course_wise_segregations)
+3. ALWAYS filter status = 1 for active records
+4. MARKS are JSON: use JSON_EXTRACT(mark, '$.co') for coding scores
+5. Student role = 7. Staff role = 4. Developer role = 5. Admin role = 1.
 
-Rule 2: Start broad, then narrow
-- Step 1: Call \`list_tables\` to see everything available.
-- Step 2: Call \`describe_table\` to see column types and ACTUAL data samples.
-- Step 3: Call \`get_course_allocations\` if you need college prefixes.
-- Step 4: NOW write the real query with full knowledge. I go wide first, then zoom in.
+## 📊 SAMPLE DATA — WHAT THE DATA ACTUALLY LOOKS LIKE
 
-Rule 3: When data is JSON — ALWAYS inspect sample first
-- You cannot guess JSON keys. You MUST use \`describe_table\` which returns sample rows showing EXACTLY how the \`mark\` and \`total_mark\` JSON is structured (e.g. '$.co').
+### 1. USERS TABLE (6,700+ rows)
+| id   | name              | email                           | role | roll_no       | status |
+|------|-------------------|---------------------------------|------|---------------|--------|
+| 1    | admin User        | admin@amypo.com                 | 1    | NULL          | 1      |
+| 5    | Jeyapaul          | jeyapaul@amypo.in               | 5    | NULL          | 1      |
+| 34   | Demo Student Sena | sena@amypo.in                   | 7    | 20BAU301      | 1      |
+| 1341 | Muruganantham     | muruganantham@amypo.in          | 5    | NULL          | 1      |
+| 2876 | FARA FATHIMA I    | farafathima.2301055@srec.ac.in  | 7    | 71812301055   | 1      |
 
-Rule 4: Test before delivering
-- Execute your SQL using \`run_sql\`. Check the results. If my query returns wrong results or errors, I fix it and retry. Do not return untested SQL.
+ROLE CODES: 1=Super Admin, 2=Admin, 3=Manager, 4=Staff/Trainer, 5=Developer/Team, 6=Support/QA, 7=Student
+STATUS CODES: 1=Active, 2=Inactive/Suspended
+PATTERNS:
+- AMYPO staff: @amypo.in or @amypo.com, roles 1-6, no roll_no
+- Students: @{college}.ac.in or @{college}.edu.in, role=7, has roll_no
+- SEARCH: ALWAYS WHERE name LIKE '%term%' OR email LIKE '%term%' OR roll_no LIKE '%term%'
 
-Rule 5: Think about what could go wrong
-- Question your own results. If a college has 0% coding but 88% overall, maybe they only took MCQ tests! Run extra queries to verify edge cases before giving your final answer.
+### 2. COLLEGES TABLE (17 active colleges)
+| id | college_name                                       | short_name  | institution_id | test_data_prefix |
+|----|----------------------------------------------------|-------------|----------------|------------------|
+| 3  | Sri Krishna Arts and Science College               | skasc       | 2 (SKG)        | skasc            |
+| 4  | Amypo Demo college                                 | demolab     | NULL           | demolab          |
+| 5  | Sri Krishna College of Technology                  | skct        | 2 (SKG)        | skct             |
+| 6  | Sri Ramakrishna Engineering College                | srec        | 3 (SRG)        | srec             |
+| 7  | Sri Ramakrishna Institute of Technology             | srit        | 3 (SRG)        | (no test data)   |
+| 8  | Dr Mahalingam College of Engg & Technology (MCET)  | demolab     | NULL           | mcet             |
+| 9  | Swayam plus                                        | swayamplus  | NULL           | (no test data)   |
+| 10 | Kumaraguru College of Liberal Arts & Science        | kclas       | NULL           | kclas            |
+| 11 | United Institute of Technology                     | uit         | NULL           | (no test data)   |
+| 12 | Muthayammal Engineering College                    | mec         | NULL           | mec              |
+| 13 | Sri Krishna College of Engg & Technology (SKCET)   | skcet       | 2 (SKG)        | skcet            |
+| 14 | Nehru Institute of Engineering and Technology      | niet        | 4 (Nehru)      | niet             |
+| 15 | Nehru Institute of Technology                      | nit         | 4 (Nehru)      | nit              |
+| 16 | Coimbatore Institute of Engg & Technology          | ciet        | NULL           | ciet             |
+| 17 | Karunya Institute of Technology and Sciences       | kits        | NULL           | kits             |
+| 19 | JP College of Engineering                          | JPC         | NULL           | jpc              |
 
-## 🔄 RETRY PROTOCOL (CRITICAL)
-- If \`run_sql\` returns an error, DO NOT GIVE UP. Read the error message carefully.
-- Fix your SQL based on the error (wrong table name? missing JOIN? bad JSON key?).
-- Retry up to 3 times with corrected SQL.
-- Only after 3 failed attempts should you report failure to the user.
-- Common fixes: check table name spelling, verify column exists via \`describe_table\`, check JSON key path.
+⚠️ GOTCHA: MCET (id:8) has college_short_name="demolab" but test tables use "mcet_" prefix!
+INSTITUTION GROUPS: SKG(id:2)=[skasc,skct,skcet], SRG(id:3)=[srec,srit], Nehru(id:4)=[niet,nit]
 
-## 📖 BUSINESS CONTEXT & DEFINITIONS (READ CAREFULLY)
-- **Status:** \`status = 1\` ALWAYS means Active. You must filter by \`status = 1\` for almost all queries regarding users or enrollments.
-- **Roles:** 7=Student, 4=Staff, 5=Trainer, 6=ContentCreator, 3=CollegeAdmin, 2=Admin, 1=SuperAdmin.
-- **Course Allocations (Marketplace vs Institutional):**
-  - \`course_wise_segregations\` represents INSTITUTIONAL/COLLEGE allocations (bulk assignments to colleges).
-  - \`user_course_enrollments\` mostly represents MARKETPLACE allocations (self-service individual enrollments).
-- **Key Relationships:** Students are linked to their respective college exams/courses via \`course_wise_segregations\` (NOT directly in the \`users\` table).
+### 3. TEST DATA TABLES — Pattern: {prefix}_{semester}_test_data
+| Table                       | Rows   | College |
+|-----------------------------|--------|---------|
+| skcet_2026_1_test_data      | 10,882 | SKCET   |
+| srec_2025_2_test_data       | 4,558  | SREC    |
+| srec_2026_1_test_data       | 3,024  | SREC    |
+| skct_2025_2_test_data       | 2,126  | SKCT    |
+| mcet_2025_2_test_data       | 2,015  | MCET    |
+| ciet_2026_1_test_data       | 844    | CIET    |
+| kclas_2026_1_test_data      | 529    | KCLAS   |
+| niet_2026_1_test_data       | 468    | NIET    |
+| mcet_2026_1_test_data       | 388    | MCET    |
+| kits_2026_1_test_data       | 313    | KITS    |
+| b2c_test_data               | 81     | B2C/Marketplace |
+| nit_2026_1, jpc_2026_1, mec_2026_1 | small | Others |
+Each college also has matching _coding_result and _mcq_result tables.
+
+MARKS ARE JSON — Extract with:
+  JSON_EXTRACT(mark, '$.co')         → coding mark
+  JSON_EXTRACT(mark, '$.mcq')        → MCQ mark
+  JSON_EXTRACT(mark, '$.pro')        → project mark
+  JSON_EXTRACT(total_mark, '$.co')   → coding total
+  JSON_EXTRACT(total_mark, '$.mcq')  → MCQ total
+  JSON_EXTRACT(total_mark, '$.pro')  → project total
+
+PERCENTAGE:
+  ROUND(JSON_EXTRACT(mark, '$.co') / NULLIF(JSON_EXTRACT(total_mark, '$.co'), 0) * 100, 2)
+
+### 4. CODING RESULT — {college}_{semester}_coding_result
+Per-question submissions: user_id, question_id, mark, total_mark, complexity, solve_status(1=solved,0=not)
+
+### 5. MCQ RESULT — {college}_{semester}_mcq_result
+Per-question MCQ: user_id, question_id, mark, total_mark, solution(JSON), attempt_count
+
+### 6. COURSE_WISE_SEGREGATIONS (5,918 rows) — ALL Allocations (College + Marketplace)
+| user_id | user_role | college_id | course_id | course_allocation_id | type | progress | score |
+type=1(practice), type=2(test). This is EVERYTHING — not just marketplace.
+
+### 7. USER_COURSE_ENROLLMENTS (241 rows) — MARKETPLACE ONLY ⚠️
+Self-enrollment only. THIS is marketplace. Only 4 allocation IDs: 110, 111, 112, 113.
+
+### 8. COURSES (54 rows)
+category: 1=Basic, 2=Intermediate, 3=Professional
+
+### 9. COURSE_ACADEMIC_MAPS (1,300 rows) — Links courses→topics→tests
+| allocation_id | college_id | course_id | topic_id | topic_name | db |
+db column (e.g., "demolab_2025_2") tells which test tables to query.
+test_data.topic_test_id maps to course_academic_maps.id
+
+### 10. SUPPORTING TABLES
+- user_academics: user_id → college_id, department_id, batch_id, section_id
+- batches: batch_name (e.g., "2023-2027"), college_id
+- departments: department_name, department_short_name
+- sections: section_name (A, B, C, D, E, F, G)
+- college_department_maps: college_id → department_id
+- institutions: institution_name (SKG, SRG, Nehru)
+- topics (675 rows): topic_name, category
+
+### 11. FEEDBACK SYSTEM
+- staff_trainer_feedback (22,396 rows): user_id, course_id, staff_trainer_id, question_id, feedback(1-5)
+- portal_feedback (6,060 rows): user_id, question_id, feedback(1-5), type
+- feedback_questions: "Overall Experience", "Ease of Use", "Content Quality", "Speed", "Helpfulness"
+- feedback_allocations: Links feedback to college/dept/batch/section
+
+### 12. CERTIFICATES
+- certificates: Templates with {{college}}, {{course}}, {{department}} placeholders
+- verify_certificates (12,145 rows): roll_number, name, c_certificate(ID like "AMY20240415136")
+
+### 13. DISCUSSIONS & AI
+- discussions (185), discussion_messages (383): Forum threads per course/topic
+- a_i_high_lights: AI explanations for study materials
+- ai_prompts: System prompts for code formatting, evaluation
+
+### 14. ACTIVITY TRACKING
+- 2025_submission_tracks, 2026_submission_tracks: Daily attended/solved counts as JSON by date
+- testpage_user_tracks (3,390): User behavior during tests
+- user_login_activities: ip_address, browser, os, device per login
+
+## 🔗 TABLE RELATIONSHIPS
+
+users.id = user_academics.user_id
+users.id = course_wise_segregations.user_id
+users.id = user_course_enrollments.user_id
+users.id = {college}_test_data.user_id
+users.id = {college}_coding_result.user_id
+users.id = {college}_mcq_result.user_id
+users.id = staff_trainer_feedback.user_id
+users.id = portal_feedback.user_id
+colleges.id = user_academics.college_id
+colleges.id = batches.college_id
+colleges.id = college_department_maps.college_id
+colleges.id = course_academic_maps.college_id
+departments.id = user_academics.department_id
+courses.id = course_wise_segregations.course_id
+courses.id = course_academic_maps.course_id
+course_academic_maps.id = {college}_test_data.topic_test_id
+topics.id = course_academic_maps.topic_id
+course_wise_segregations.course_allocation_id = user_course_enrollments.course_allocation_id
+feedback_questions.id = portal_feedback.question_id
+
+## 🔍 QUERY PATTERNS
+
+SEARCH USER: WHERE name LIKE '%X%' OR email LIKE '%X%' OR roll_no LIKE '%X%'
+COUNT STUDENTS: SELECT COUNT(*) FROM users WHERE role = 7 AND status = 1
+COLLEGE STUDENTS: JOIN users + user_academics + colleges
+STUDENT SCORES: {college}_test_data + JSON_EXTRACT for marks
+TOP STUDENTS: SUM marks, GROUP BY user_id, ORDER BY pct DESC
+MARKETPLACE: user_course_enrollments ONLY (NOT course_wise_segregations)
+COMBINE SEMESTERS: UNION ALL {college}_2025_2 and {college}_2026_1
+TOPIC SCORES: JOIN test_data.topic_test_id = course_academic_maps.id
+FEEDBACK: JOIN staff_trainer_feedback + feedback_questions
+CERTIFICATES: verify_certificates WHERE status = 1
+
+## ⚠️ GOTCHAS
+
+1. MCET (id:8) short_name="demolab" but test tables = "mcet_" prefix
+2. Some colleges have NO test tables (srit, uit, swayamplus)
+3. b2c_test_data = marketplace students, separate from college test data
+4. admin_test_data = admin testing, NOT real student data
+5. total_mark JSON can have 0 — use NULLIF to avoid division by zero
+6. status=2 means inactive — always filter status=1
+7. course_academic_maps.db column tells which test tables to use`;
 
 ` + getSmartRegistryContext();
 
 // ── Report generation system prompt ───────────────────────────────────────────
-const REPORT_SYSTEM_PROMPT = `You are a data analyst. Generate a brief report from SQL results.
-## FORMAT RULES (STRICT):
-1. START with a direct one-line answer to the question
+const REPORT_SYSTEM_PROMPT = `You are a data analyst.Generate a brief report from SQL results.
+## FORMAT RULES(STRICT):
+1. START with a direct one - line answer to the question
    ✅ "There are 4,021 active students on the platform."
    ❌ "This analysis explores the active student population..."
 2. Show data as a CLEAN markdown table
-   - No extra columns
-   - Round percentages to 2 decimal places
-   - Use | alignment
-3. Add 3-4 KEY INSIGHTS only (short bullet points)
+  - No extra columns
+    - Round percentages to 2 decimal places
+      - Use | alignment
+3. Add 3 - 4 KEY INSIGHTS only(short bullet points)
    ✅ "SREC has the most tests (7,582) but lowest coding score (63.92%)"
    ❌ "The data shows that having academic information is more common (3,728) than being course-enrolled (3,132), suggesting students often complete their profiles before or without enrolling."
 4. DO NOT include:
    ❌ "Context" paragraph
    ❌ "About Data Segmentation" or any educational paragraphs
-   ❌ "Recommendations" (unless user specifically asks)
+   ❌ "Recommendations"(unless user specifically asks)
    ❌ Emojis on every bullet point
    ❌ Generic business advice
    ❌ Sentences longer than 20 words
-   ❌ "Here are the results for your question! The query is ready in the console." (Just answer directly)
+   ❌ "Here are the results for your question! The query is ready in the console."(Just answer directly)
 5. ANSWER ONLY WHAT WAS ASKED
-   - If user asks for count, give count + table + 3 insights. Do not add extra fluff.
+  - If user asks for count, give count + table + 3 insights.Do not add extra fluff.
 6. KEEP IT SHORT
-   - Maximum 150 words
-   - If the answer is a single number, say it in ONE line
-   - Users want ANSWERS, not essays
+  - Maximum 150 words
+    - If the answer is a single number, say it in ONE line
+      - Users want ANSWERS, not essays
 ## EXAMPLE — Good Report:
 Question: "How many students are there?"
-Data: [{total: 4021}, {enrolled: 3132}, {with_academics: 3728}]
+Data: [{ total: 4021 }, { enrolled: 3132 }, { with_academics: 3728 }]
 Report:
-There are **4,021 active students** on the Mako platform.
+There are ** 4,021 active students ** on the Mako platform.
 | Metric | Count |
-|--------|-------|
+| --------| -------|
 | Total Active Students | 4,021 |
-| Enrolled in Courses | 3,132 (78%) |
-| With Academic Profile | 3,728 (93%) |
-**Key Insights:**
-- 93% of students have completed their academic profile
-- 889 students (22%) are registered but not enrolled in any course
-- 293 students are missing academic information
+| Enrolled in Courses | 3, 132(78 %) |
+| With Academic Profile | 3, 728(93 %) |
+** Key Insights:**
+  - 93 % of students have completed their academic profile
+    - 889 students(22 %) are registered but not enrolled in any course
+      - 293 students are missing academic information
 ## EXAMPLE — Ranking Report:
 Question: "Top 5 SREC students?"
 Report:
-The top performing SREC student is **AKSHAYA PRIYA S** with 95.13% overall.
+The top performing SREC student is ** AKSHAYA PRIYA S ** with 95.13 % overall.
 | Rank | Student | Coding | MCQ | Overall |
-|------|---------|--------|-----|---------|
-| 1 | AKSHAYA PRIYA S | 95.51% | 84.00% | 95.13% |
-| 2 | Joshika S | 91.28% | 93.94% | 91.35% |
-| 3 | MANICKAVEL ARASI S | 91.53% | 84.00% | 91.34% |
-| 4 | Priyadharshini R | 91.00% | 96.97% | 91.12% |
-| 5 | ARAVINDHAN T | 91.90% | 64.00% | 91.07% |
-**Key Insights:**
-- AKSHAYA PRIYA S dominates with 95.51% coding score
-- Priyadharshini R has the highest MCQ (96.97%) but coding brings her to #4
-- ARAVINDHAN T has strong coding (91.90%) but weakest MCQ (64%)
+| ------| ---------| --------| -----| ---------|
+| 1 | AKSHAYA PRIYA S | 95.51 % | 84.00 % | 95.13 % |
+| 2 | Joshika S | 91.28 % | 93.94 % | 91.35 % |
+| 3 | MANICKAVEL ARASI S | 91.53 % | 84.00 % | 91.34 % |
+| 4 | Priyadharshini R | 91.00 % | 96.97 % | 91.12 % |
+| 5 | ARAVINDHAN T | 91.90 % | 64.00 % | 91.07 % |
+** Key Insights:**
+  - AKSHAYA PRIYA S dominates with 95.51 % coding score
+    - Priyadharshini R has the highest MCQ(96.97 %) but coding brings her to #4
+      - ARAVINDHAN T has strong coding(91.90 %) but weakest MCQ(64 %)
 ## EXAMPLE — Student Profile Report:
 Question: "Tell about SUTHIL T"
 Report:
-**SUTHIL T** (727824TUIO052) is a SKCT student ranked **#2 out of 883** with a perfect 100% project score.
+** SUTHIL T ** (727824TUIO052) is a SKCT student ranked **#2 out of 883 ** with a perfect 100 % project score.
 | Field | Detail |
-|-------|--------|
-| College | Sri Krishna College of Technology (SKCT) |
+| -------| --------|
+| College | Sri Krishna College of Technology(SKCT) |
 | Department | BE CSE - Internet of Things |
-| Batch | 2024-2028 |
-| Tests Taken | 1 (Project-based) |
-| Project Score | 30/30 = 100% ⭐ |
-| College Rank | #2 out of 883 (Top 0.2%) |
-| College Average | 11.97% |
-**Key Insights:**
-- Perfect score on his only project test
-- 8.35x above college average
-- SKCT only has project assessments — no coding/MCQ tests yet
-NOW generate a report following these rules. Be CONCISE.`;
+| Batch | 2024 - 2028 |
+| Tests Taken | 1(Project - based) |
+| Project Score | 30 / 30 = 100 % ⭐ |
+| College Rank | #2 out of 883(Top 0.2 %) |
+| College Average | 11.97 % |
+** Key Insights:**
+  - Perfect score on his only project test
+    - 8.35x above college average
+      - SKCT only has project assessments — no coding / MCQ tests yet
+NOW generate a report following these rules.Be CONCISE.`;
 
 // ── SQL Validation Helper ───────────────────────────────────────────────────────
 function validateSQL(sql: string): string[] {
@@ -434,22 +492,22 @@ agentRoutes.post("/chat", async (c) => {
     // Stage 1: Question Understanding (Intent Parsing via generateText + JSON parse)
     const understandingResult = await generateText({
       model: makeDeepSeekModel("deepseek-chat"),
-      system: `You are a JSON-only classifier. Output ONLY a valid JSON object, no markdown, no explanation.`,
+      system: `You are a JSON - only classifier.Output ONLY a valid JSON object, no markdown, no explanation.`,
       messages: [{
         role: "user" as const, content: `Analyze this user question about an educational database.
-Previous Chat Context (if any):
-${history.map((h: any) => `${h.role}: ${h.content}`).join('\\n') || "None"}
+Previous Chat Context(if any):
+${ history.map((h: any) => `${h.role}: ${h.content}`).join('\\n') || "None" }
 
 Current Question: "${question.trim()}"
 
 Return a JSON object with these fields:
 - "type": one of "ranking", "student_profile", "college_profile", "comparison", "count", "aggregation", "other"
-- "college": specific college code (e.g. "srec", "mcet", "skcet") or "ALL" if comparing all
-- "student": student name or roll number if mentioned, or null
-- "needs_scores": true/false whether test_data or score computation is needed
-- "limit": number if the question asks for top N, or null
+  - "college": specific college code(e.g. "srec", "mcet", "skcet") or "ALL" if comparing all
+    - "student": student name or roll number if mentioned, or null
+      - "needs_scores": true / false whether test_data or score computation is needed
+        - "limit": number if the question asks for top N, or null
 
-JSON only:` }],
+JSON only: ` }],
       temperature: 0,
     });
 
@@ -457,7 +515,7 @@ JSON only:` }],
       type: "other", college: "ALL", needs_scores: true
     };
     try {
-      const raw = (understandingResult.text || "").replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
+      const raw = (understandingResult.text || "").replace(/```json ?\s * /gi, "").replace(/```/g, "").trim();
       questionContext = JSON.parse(raw);
     } catch (_parseErr) {
       logger.warn("Failed to parse question context, using defaults", { text: understandingResult.text?.slice(0, 200) });
@@ -466,20 +524,20 @@ JSON only:` }],
 
     const liveSchema = await getFullSchemaPrompt();
 
-    let runtimeContext = `\n\nUser context: user_id = ${user_id ?? "unknown"}, user_role = ${user_role ?? "unknown"} (7 = Student, 4 = Staff, 5 = Trainer, 2 = Admin)`;
-    if (consoleId) runtimeContext += `\nActive console ID: ${consoleId} `;
+    let runtimeContext = `\n\nUser context: user_id = ${ user_id ?? "unknown" }, user_role = ${ user_role ?? "unknown" } (7 = Student, 4 = Staff, 5 = Trainer, 2 = Admin)`;
+    if (consoleId) runtimeContext += `\nActive console ID: ${ consoleId } `;
 
     // Inject the parsed context into the AI's preamble so it knows EXACTLY what it's building
-    runtimeContext += `\n\nQUESTION INTENT ANALYSIS (from pre-parser):\n` + JSON.stringify(questionContext, null, 2);
+    runtimeContext += `\n\nQUESTION INTENT ANALYSIS(from pre - parser): \n` + JSON.stringify(questionContext, null, 2);
 
     // Phase 3, Step 4: Multi-Query Routing
     let strategy = "";
     switch (questionContext.type) {
       case "count":
         strategy = `STRATEGY: You MUST use a single, simple, combined SQL query! 
-        DO NOT use UNION ALL for count aggregations. DO NOT write 18 subqueries. DO NOT query every single table.
-        Example: SELECT (SELECT COUNT(*) FROM users WHERE role = 7 AND status = 1) AS total,
-                 (SELECT COUNT(DISTINCT user_id) FROM course_wise_segregations WHERE user_role = 7 AND status = 1) AS enrolled;`;
+        DO NOT use UNION ALL for count aggregations.DO NOT write 18 subqueries.DO NOT query every single table.
+  Example: SELECT(SELECT COUNT(*) FROM users WHERE role = 7 AND status = 1) AS total,
+    (SELECT COUNT(DISTINCT user_id) FROM course_wise_segregations WHERE user_role = 7 AND status = 1) AS enrolled; `;
         break;
       case "ranking":
         strategy = "STRATEGY: You only need to run one big query using UNION ALL across all necessary college tables.";
@@ -495,7 +553,7 @@ JSON only:` }],
         break;
     }
     if (strategy) {
-      runtimeContext += `\n\nMULTI-QUERY ROUTING STRATEGY:\n${strategy}`;
+      runtimeContext += `\n\nMULTI - QUERY ROUTING STRATEGY: \n${ strategy } `;
     }
 
     const systemPrompt = DB_SYSTEM_PREAMBLE + liveSchema + runtimeContext + findMatchingTemplate(question);
@@ -521,24 +579,24 @@ JSON only:` }],
         parameters: z.object({ table_name: z.string().optional().describe("Exact table name"), table: z.string().optional() }),
         execute: async (args: { table_name?: string; table?: string }) => {
           const tableName = args.table_name || args.table;
-          console.log(`\n\n[AI TOOL / chat]describe_table(${tableName}) \n`);
+          console.log(`\n\n[AI TOOL / chat]describe_table(${ tableName }) \n`);
           if (!tableName) return { error: "table_name is required" };
           const safe = tableName.replace(/[^a-zA-Z0-9_]/g, "");
           const descRes = await databaseConnectionService.executeQuery(dbMock, `DESCRIBE \`${safe}\``, { databaseName: dbName });
-          if (!descRes.success) return { error: descRes.error };
-          const sampleRes = await databaseConnectionService.executeQuery(dbMock, `SELECT * FROM \`${safe}\` LIMIT 3`, { databaseName: dbName });
-          return {
-            columns: descRes.data,
-            sample_data: sampleRes.success && sampleRes.data ? sampleRes.data : []
-          };
+if (!descRes.success) return { error: descRes.error };
+const sampleRes = await databaseConnectionService.executeQuery(dbMock, `SELECT * FROM \`${safe}\` LIMIT 3`, { databaseName: dbName });
+return {
+  columns: descRes.data,
+  sample_data: sampleRes.success && sampleRes.data ? sampleRes.data : []
+};
         },
       } as any),
-      get_course_allocations: tool({
-        description: "Find which college database prefixes (e.g. srec_2025_2) contain data for a specific course ID. ALWAYS use this before querying {college}_{batch}_coding_result or {college}_{batch}_mcq_result tables.",
-        parameters: z.object({ course_id: z.number().describe("The ID of the course") }),
-        execute: async ({ course_id }: { course_id: number }) => {
-          console.log(`\n\n[AI TOOL /chat] get_course_allocations(${course_id})\n`);
-          const query = `
+get_course_allocations: tool({
+  description: "Find which college database prefixes (e.g. srec_2025_2) contain data for a specific course ID. ALWAYS use this before querying {college}_{batch}_coding_result or {college}_{batch}_mcq_result tables.",
+  parameters: z.object({ course_id: z.number().describe("The ID of the course") }),
+  execute: async ({ course_id }: { course_id: number }) => {
+    console.log(`\n\n[AI TOOL /chat] get_course_allocations(${course_id})\n`);
+    const query = `
             SELECT 
               cam.id as allocation_id, 
               cam.course_id, 
@@ -549,138 +607,138 @@ JSON only:` }],
             JOIN colleges c ON c.id = cam.college_id
             WHERE cam.course_id = ${Number(course_id)}
           `;
-          const res = await databaseConnectionService.executeQuery(dbMock, query, { databaseName: dbName });
-          return res.success ? { allocations: res.data } : { error: res.error };
-        },
-      } as any),
-      run_sql: tool({
-        description: "Execute a SQL SELECT query and return rows. Only SELECT allowed.",
-        parameters: z.object({ sql: z.string().optional().describe("SQL SELECT statement"), query: z.string().optional() }),
-        execute: async (args: { sql?: string; query?: string }) => {
-          const sql = args.sql || args.query || "";
-          console.log(`\n\n[AI TOOL /chat] run_sql: ${sql.slice(0, 100)}...\n`);
-          const cleaned = sql.trim().replace(/^```(sql)?\s*/i, "").replace(/\s*```$/i, "").trim();
-          if (!cleaned.toLowerCase().startsWith("select")) return { error: "Only SELECT queries are allowed." };
+    const res = await databaseConnectionService.executeQuery(dbMock, query, { databaseName: dbName });
+    return res.success ? { allocations: res.data } : { error: res.error };
+  },
+} as any),
+  run_sql: tool({
+    description: "Execute a SQL SELECT query and return rows. Only SELECT allowed.",
+    parameters: z.object({ sql: z.string().optional().describe("SQL SELECT statement"), query: z.string().optional() }),
+    execute: async (args: { sql?: string; query?: string }) => {
+      const sql = args.sql || args.query || "";
+      console.log(`\n\n[AI TOOL /chat] run_sql: ${sql.slice(0, 100)}...\n`);
+      const cleaned = sql.trim().replace(/^```(sql)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      if (!cleaned.toLowerCase().startsWith("select")) return { error: "Only SELECT queries are allowed." };
 
-          const issues = validateSQL(cleaned);
-          if (issues.length > 0) return { error: "SQL Rejected. Fix these issues: " + issues.join("; ") };
+      const issues = validateSQL(cleaned);
+      if (issues.length > 0) return { error: "SQL Rejected. Fix these issues: " + issues.join("; ") };
 
-          const res = await databaseConnectionService.executeQuery(dbMock, cleaned, { databaseName: dbName });
-          if (!res.success) return { error: res.error, sql: cleaned };
+      const res = await databaseConnectionService.executeQuery(dbMock, cleaned, { databaseName: dbName });
+      if (!res.success) return { error: res.error, sql: cleaned };
 
-          const data = res.data || [];
-          if (data.length === 0) {
-            return { error: "No rows returned. Please verify your table name, schema, or JOIN conditions.", sql: cleaned };
-          }
-
-          // Phase 3, Step 2: Verify Results based on intent
-          if (questionContext.type === "ranking") {
-            const columns = Object.keys(data[0] || {}).map(c => c.toLowerCase());
-            const hasScores = columns.some(c => c.includes('score') || c.includes('pct') || c.includes('mark') || c.includes('percent') || c.includes('total'));
-            if (!hasScores) {
-              return { error: "Validation Failed: Question asks for ranking, but the results lack score/percentage columns. You MUST calculate and SELECT scores. Fix your SQL and retry." };
-            }
-          }
-
-          if (questionContext.limit && data.length > (questionContext.limit * 2) && data.length > 5) {
-            return { error: `Validation Failed: You returned ${data.length} rows, but the question only asked for around ${questionContext.limit}. Use LIMIT or fix your groupings. Fix your SQL and retry.` };
-          }
-
-          if (questionContext.type === "student_profile") {
-            const columns = Object.keys(data[0] || {}).map(c => c.toLowerCase());
-            if (!columns.some(c => c.includes('name'))) {
-              return { error: "Validation Failed: This is a student profile question but there is no 'name' column in the results. Did you JOIN users? Fix your SQL and retry." };
-            }
-          }
-
-          // Guardrail: Check for unreasonable scores (> 100%)
-          const firstRow = data[0] || {};
-          const scoreWarnings: string[] = [];
-          for (const [key, val] of Object.entries(firstRow)) {
-            const lk = key.toLowerCase();
-            if ((lk.includes('pct') || lk.includes('percent') || lk.includes('percentage')) && typeof val === 'number' && val > 110) {
-              scoreWarnings.push(`${key}=${val} exceeds 100% — likely a calculation error`);
-            }
-          }
-          if (scoreWarnings.length > 0) {
-            return { error: `Validation Warning: ${scoreWarnings.join('; ')}. Check your SUM/divisor logic. Fix your SQL and retry.` };
-          }
-
-          return { rows: data.slice(0, 200), total: data.length, sql: cleaned };
-        },
-      } as any),
-    };
-
-    // SDK v6: use stopWhen instead of manual tool loop — SDK handles message format internally
-    const result = await generateText({
-      model: chatModel,
-      system: systemPrompt,
-      messages: [
-        ...(history as any),
-        { role: "user" as const, content: question.trim() }
-      ],
-      tools: tools as any,
-      stopWhen: stepCountIs(8),
-      temperature: 0,
-      onStepFinish: (step) => {
-        const trace = `\n[AI STEP] completed. Tool calls: ${JSON.stringify(step.toolCalls)}\nResults: ${JSON.stringify(step.toolResults)}\n`;
-        appendFileSync('ai_trace.log', trace);
-        logger.info(trace);
+      const data = res.data || [];
+      if (data.length === 0) {
+        return { error: "No rows returned. Please verify your table name, schema, or JOIN conditions.", sql: cleaned };
       }
-    });
 
-    // Extract SQL and results from the SDK's internal steps
-    let executedSql = "";
-    const sqlResultsList: any[] = []; // Phase 3: Accumulate multiple datasets
-    const stepsCount = result.steps?.length ?? 1;
-
-    for (const step of result.steps ?? []) {
-      for (const tr of (step.toolResults ?? []) as any[]) {
-        const raw = tr.result ?? tr.output;
-        if (tr.toolName === "run_sql" && raw?.rows?.length > 0) {
-          sqlResultsList.push({ sql: raw.sql, data: raw.rows.slice(0, 100) });
-          executedSql += raw.sql + ";\n";
+      // Phase 3, Step 2: Verify Results based on intent
+      if (questionContext.type === "ranking") {
+        const columns = Object.keys(data[0] || {}).map(c => c.toLowerCase());
+        const hasScores = columns.some(c => c.includes('score') || c.includes('pct') || c.includes('mark') || c.includes('percent') || c.includes('total'));
+        if (!hasScores) {
+          return { error: "Validation Failed: Question asks for ranking, but the results lack score/percentage columns. You MUST calculate and SELECT scores. Fix your SQL and retry." };
         }
       }
+
+      if (questionContext.limit && data.length > (questionContext.limit * 2) && data.length > 5) {
+        return { error: `Validation Failed: You returned ${data.length} rows, but the question only asked for around ${questionContext.limit}. Use LIMIT or fix your groupings. Fix your SQL and retry.` };
+      }
+
+      if (questionContext.type === "student_profile") {
+        const columns = Object.keys(data[0] || {}).map(c => c.toLowerCase());
+        if (!columns.some(c => c.includes('name'))) {
+          return { error: "Validation Failed: This is a student profile question but there is no 'name' column in the results. Did you JOIN users? Fix your SQL and retry." };
+        }
+      }
+
+      // Guardrail: Check for unreasonable scores (> 100%)
+      const firstRow = data[0] || {};
+      const scoreWarnings: string[] = [];
+      for (const [key, val] of Object.entries(firstRow)) {
+        const lk = key.toLowerCase();
+        if ((lk.includes('pct') || lk.includes('percent') || lk.includes('percentage')) && typeof val === 'number' && val > 110) {
+          scoreWarnings.push(`${key}=${val} exceeds 100% — likely a calculation error`);
+        }
+      }
+      if (scoreWarnings.length > 0) {
+        return { error: `Validation Warning: ${scoreWarnings.join('; ')}. Check your SUM/divisor logic. Fix your SQL and retry.` };
+      }
+
+      return { rows: data.slice(0, 200), total: data.length, sql: cleaned };
+    },
+  } as any),
+    };
+
+// SDK v6: use stopWhen instead of manual tool loop — SDK handles message format internally
+const result = await generateText({
+  model: chatModel,
+  system: systemPrompt,
+  messages: [
+    ...(history as any),
+    { role: "user" as const, content: question.trim() }
+  ],
+  tools: tools as any,
+  stopWhen: stepCountIs(8),
+  temperature: 0,
+  onStepFinish: (step) => {
+    const trace = `\n[AI STEP] completed. Tool calls: ${JSON.stringify(step.toolCalls)}\nResults: ${JSON.stringify(step.toolResults)}\n`;
+    appendFileSync('ai_trace.log', trace);
+    logger.info(trace);
+  }
+});
+
+// Extract SQL and results from the SDK's internal steps
+let executedSql = "";
+const sqlResultsList: any[] = []; // Phase 3: Accumulate multiple datasets
+const stepsCount = result.steps?.length ?? 1;
+
+for (const step of result.steps ?? []) {
+  for (const tr of (step.toolResults ?? []) as any[]) {
+    const raw = tr.result ?? tr.output;
+    if (tr.toolName === "run_sql" && raw?.rows?.length > 0) {
+      sqlResultsList.push({ sql: raw.sql, data: raw.rows.slice(0, 100) });
+      executedSql += raw.sql + ";\n";
     }
+  }
+}
 
-    // If LLM answered from knowledge (no data returned), return its text directly
-    if (sqlResultsList.length === 0 && result.text?.trim()) {
-      return c.json({ report: result.text.trim(), sql: executedSql || null, steps: stepsCount });
-    }
+// If LLM answered from knowledge (no data returned), return its text directly
+if (sqlResultsList.length === 0 && result.text?.trim()) {
+  return c.json({ report: result.text.trim(), sql: executedSql || null, steps: stepsCount });
+}
 
-    // ── Report generation pass (strictly bound to results) ───────────────────────
-    let allDataJson = "";
-    let totalRows = 0;
-    sqlResultsList.forEach((res, i) => {
-      totalRows += res.data.length;
-      allDataJson += `\n\n--- Query ${i + 1} Results ---\nSQL: ${res.sql}\nDATA:\n${JSON.stringify(res.data, null, 2)}`;
-    });
+// ── Report generation pass (strictly bound to results) ───────────────────────
+let allDataJson = "";
+let totalRows = 0;
+sqlResultsList.forEach((res, i) => {
+  totalRows += res.data.length;
+  allDataJson += `\n\n--- Query ${i + 1} Results ---\nSQL: ${res.sql}\nDATA:\n${JSON.stringify(res.data, null, 2)}`;
+});
 
-    const reportUserPrompt = `Question: "${question}"
+const reportUserPrompt = `Question: "${question}"
 You ran ${sqlResultsList.length} queries returning a total of ${totalRows} rows.
 Here is the ACTUAL DATA you generated:
 ${allDataJson.slice(0, 12000)}${allDataJson.length > 12000 ? "\n...(truncated to fit)" : ""}`;
 
-    const reportResult = await generateText({
-      model: reasonerModel,
-      system: REPORT_SYSTEM_PROMPT,
-      messages: [{ role: "user" as const, content: reportUserPrompt }],
-      temperature: 0,
-    });
+const reportResult = await generateText({
+  model: reasonerModel,
+  system: REPORT_SYSTEM_PROMPT,
+  messages: [{ role: "user" as const, content: reportUserPrompt }],
+  temperature: 0,
+});
 
-    const finalReport = reportResult.text?.trim() || `## Results\n\n${allDataJson}`;
-    const totalSteps = stepsCount + 1;
+const finalReport = reportResult.text?.trim() || `## Results\n\n${allDataJson}`;
+const totalSteps = stepsCount + 1;
 
-    logger.info("Agent chat complete", { userId, steps: totalSteps, sqlRows: totalRows });
-    return c.json({ report: finalReport, sql: executedSql || null, steps: totalSteps });
+logger.info("Agent chat complete", { userId, steps: totalSteps, sqlRows: totalRows });
+return c.json({ report: finalReport, sql: executedSql || null, steps: totalSteps });
 
 
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.error("DB path error", { error: msg });
-    return c.json({ error: msg }, 500);
-  }
+  const msg = err instanceof Error ? err.message : String(err);
+  logger.error("DB path error", { error: msg });
+  return c.json({ error: msg }, 500);
+}
 });
 
 // ── POST /chat-v2 — now with full parity: question understanding, strategy, verification ──
