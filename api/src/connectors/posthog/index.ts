@@ -1,0 +1,1 @@
+export { PosthogConnector } from "./connector";

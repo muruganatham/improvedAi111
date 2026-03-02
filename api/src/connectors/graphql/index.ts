@@ -1,0 +1,1 @@
+export { GraphQLConnector } from "./connector";
