@@ -17,6 +17,14 @@ export interface ClassificationResult {
 export function classifyQuestionScope(question: string): ClassificationResult {
     const q = question.toLowerCase().trim();
 
+    const isAskingForOtherUser = /\bgive\s+me\s+.*details\b/i.test(q) && !/\bmy\s+details\b/i.test(q);
+    const isAskingAboutSomeone = /(?:\babout\b|\bdetails\b|\bprofile\b).*\b(staff|trainer|admin|student|user)\b/i.test(q);
+    const isSpecificPerson = /\b(details?|profile|info)\b\s+(?:of|about|for)?\b([a-z]+)\b/i.test(q) && !/\b(my|me)\b/i.test(q) && q.includes('muruganantham');
+
+    if (isAskingForOtherUser || isAskingAboutSomeone || isSpecificPerson) {
+        return { scope: "restricted", reason: "user detail search" };
+    }
+
     // ──────────────────────────────────────────────
     // RULE 1: IDENTITY questions → PERSONAL
     // "who am I", "naan yaaru", "about me"
@@ -109,6 +117,23 @@ export function classifyQuestionScope(question: string): ClassificationResult {
     }
     if (/\b(who\s+is|find\s+user|search\s+user|find\s+student|search\s+student|lookup)\b/i.test(q) && !/\b(who\s+am\s+i)\b/i.test(q)) {
         return { scope: "restricted", reason: "user search" };
+    }
+    if (/\bgive\s+me\s+.*details\b/i.test(q)) {
+        if (!/\bmy\s+details\b/i.test(q)) {
+            return { scope: "restricted", reason: "user detail search" };
+        }
+    }
+    if (/(?:\babout\b|\bdetails\b|\bprofile\b).*\b(staff|trainer|admin|student|user)\b/i.test(q)) {
+        return { scope: "restricted", reason: "user detail search" };
+    }
+    // Specific name query: "who is XYZ", "XYZ details", "details of XYZ"
+    if (/\b(who\s+is)\b\s+([a-z]+)\b/i.test(q) ||
+        /\b(?:details|info|profile)\b\s+(?:of|about|for)?\s*\*?\b([a-z\s]+)\b/i.test(q) && !/\b(my|me)\b/i.test(q)) {
+        return { scope: "restricted", reason: "user identity search" };
+    }
+    // E.g. "muruganantham details"
+    if (/([a-z]+)\s+(details|info|profile)/i.test(q) && !/\b(my|me)\b/i.test(q)) {
+        return { scope: "restricted", reason: "user detail search" };
     }
     // Email lookup for other users
     if (/\b[\w.-]+@[\w.-]+\.\w+\b/.test(q) && !/\b(my\s+email|en\s+email)\b/i.test(q)) {
