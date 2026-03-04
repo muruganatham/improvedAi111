@@ -140,17 +140,49 @@ async function loadSchemaCache() {
         schema += `- ${table}: ${columns}\n`;
       }
     }
-    schema += `\nDATA PATTERNS:\n`;
-    schema += `- Dynamic tables: {college}_{year}_{sem}_coding_result, {college}_{year}_{sem}_mcq_result, {college}_{year}_{sem}_test_data — use list_tables tool to find specific ones\n`;
-    schema += `  - Coding result columns: id, user_id, question_id, solve_status (1=partial, 2=solved, 3=wrong), mark (float), time_spend (int), created_at, updated_at, status (1=active)\n`;
-    schema += `- course_wise_segregations.type: 1=coding, 2=MCQ, 3=quiz\n`;
+    schema += `\nENUM VALUES (use EXACT numbers, never strings):\n`;
     schema += `- users.role: 1=SuperAdmin, 2=Admin, 3=CollegeAdmin, 4=Staff, 5=Trainer, 6=ContentCreator, 7=Student\n`;
-    schema += `- users.gender: 1=Male, 2=Female\n`;
+    schema += `- users.gender: 1=Male, 2=Female, 3=Other (NULL/0=not set)\n`;
+    schema += `- course_wise_segregations.type: 1=Coding, 2=MCQ\n`;
+    schema += `- courses.category: 1=Foundation, 2=Advanced, 3=Specialized\n`;
+    schema += `- status column (ALL tables): 1=active. Always add WHERE status=1.\n`;
+
+    schema += `\nDYNAMIC TABLES (per-college, per-semester):\n`;
+    schema += `Pattern: {college_short_name}_{year}_{sem}_{type}\n`;
+    schema += `Example: srec_2026_1_coding_result, skcet_2025_2_mcq_result\n`;
+    schema += `Find tables: SHOW TABLES LIKE '{short_name}_%_coding_result'\n\n`;
+
+    schema += `{college}_{year}_{sem}_coding_result columns:\n`;
+    schema += `  user_id, question_id, module_id, topic_test_id, complexity\n`;
+    schema += `  solve_status (int): 0=new, 1=partial, 2=SOLVED, 3=wrong_answer\n`;
+    schema += `  mark (float): score earned. total_mark (float): max possible\n`;
+    schema += `  total_time (int): seconds spent. compile_id: language used\n`;
+    schema += `  first_submission_time, correct_submission_time (int)\n`;
+    schema += `  main_solution (text), test_cases (json), errors (json)\n`;
+    schema += `  ⚠️ "status" = row active flag (always 1), NOT solve result!\n`;
+    schema += `  ⚠️ Use solve_status=2 for "solved". NEVER status='Accepted'!\n`;
+    schema += `  ⚠️ Column is "mark" NOT "score". "total_time" NOT "execution_time".\n\n`;
+
+    schema += `{college}_{year}_{sem}_mcq_result columns:\n`;
+    schema += `  user_id, question_id, module_id, topic_test_id, complexity\n`;
+    schema += `  solve_status (int): same as coding (0/1/2/3)\n`;
+    schema += `  mark (float), total_mark (float), total_time (int)\n`;
+    schema += `  attempt_count (int), solution (text), type (tinyint)\n`;
+    schema += `  ⚠️ Same rules: solve_status=2 = solved. "mark" not "score".\n\n`;
+
+    schema += `{college}_{year}_{sem}_test_data columns:\n`;
+    schema += `  user_id, topic_test_id, module_id\n`;
+    schema += `  mark (JSON not numeric!), total_mark (JSON not numeric!)\n`;
+    schema += `  time (int), total_time (int), question_ids (json)\n`;
+    schema += `  question_status (json), attempt_datas (json)\n\n`;
+
+    schema += `QUERY HINTS:\n`;
     schema += `- "allocated courses" → COUNT from course_academic_maps (NOT courses table)\n`;
     schema += `- "available courses" → courses WHERE status = 1\n`;
-    schema += `- "enrolled courses" → course_wise_segregations or user_course_enrollments\n`;
-    schema += `- Student progress/scores → course_wise_segregations WHERE user_id = X\n`;
+    schema += `- "enrolled courses" / "my scores" → course_wise_segregations WHERE user_id = X\n`;
     schema += `- "my trainer" → course_wise_segregations → course_academic_maps → course_staff_trainer_allocations\n`;
+    schema += `- Student progress/scores (aggregated) → course_wise_segregations (best table)\n`;
+    schema += `- Per-question details → dynamic coding_result/mcq_result tables\n`;
     cachedSchemaPrompt = schema;
     logger.info(`[schema-cache] Cached ${SCHEMA_TABLES.length} table schemas`);
   } catch (err: any) {
@@ -469,7 +501,8 @@ function buildScopePrompt(
     prompt += `SCOPE: PERSONAL - This user is asking about their OWN data.\n`;
     prompt += `RULES:\n`;
     prompt += `- ALWAYS add WHERE user_id = ${userId} to filter for this user's data.\n`;
-    prompt += `- Only return THIS user's scores, courses, profile, enrollment, etc.\n`;
+    prompt += `- ONLY return THIS user's data.\n`;
+    prompt += `- Do NOT fetch profile data (name, email, roll_no, college) unless the user specifically asks for it.\n`;
     prompt += `- For "who am I" questions: query users + user_academics (name, email, roll_no, college, department, batch).\n`;
     prompt += `- For "my scores/progress": query course_wise_segregations WHERE user_id = ${userId}.\n`;
     prompt += `- For "my trainer": find via course_wise_segregations -> course_academic_maps -> course_staff_trainer_allocations.\n`;
