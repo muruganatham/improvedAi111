@@ -572,6 +572,20 @@ function preRouteQuestion(q: string): "general" | "db" | "greeting" {
     if (!platformTerms.test(lower)) return "general";
   }
 
+  const generalKnowledge = [
+    /^what (is|are|was|were)\s+.+/i,
+    /^(explain|define|describe|tell me about)\s+/i,
+    /^how does\s+.+\s+work/i,
+    /^(what|who) (invented|created|discovered)\s+/i,
+    /difference between/i,
+    /^(what are (the )?benefits|advantages|disadvantages)/i,
+  ];
+  const platformTerms = /student|college|batch|enrolled|score|course|result|skcet|srec|allocated|my\s|department|mcet|kits|skct|niet|kclas|ciet/i;
+
+  if (generalKnowledge.some(p => p.test(lower)) && !platformTerms.test(lower)) {
+    return "general";
+  }
+
   const dbPatterns = [
     /\bhow many\b/, /\bcount\b/, /\btotal\b/, /\baverage\b/, /\bsum\b/,
     /\bbest\b/, /\btop\b/, /\bworst\b/, /\branked?\b/, /\btopper\b/,
@@ -589,18 +603,6 @@ function preRouteQuestion(q: string): "general" | "db" | "greeting" {
     /\bplatform\b/, /\bnumbers\b/, /\blanguage\b/,
   ];
   if (dbPatterns.some(p => p.test(lower))) return "db";
-
-  const generalPatterns = [
-    /^what is\s+\w+\??$/,
-    /^(explain|define|describe)\s+\w+/,
-    /^how does .+work/,
-    /difference between/,
-    /^(what are (the )?benefits|advantages|disadvantages)/,
-  ];
-  if (generalPatterns.some(p => p.test(lower))) {
-    const platformTerms = /student|college|batch|enrolled|score|course|result|skcet|srec/i;
-    if (!platformTerms.test(lower)) return "general";
-  }
 
   return "db";
 }
