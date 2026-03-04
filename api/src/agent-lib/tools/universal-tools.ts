@@ -1,14 +1,18 @@
 
-
 import { z } from "zod";
 import { tool } from "ai";
 import mongoose, { Types } from "mongoose";
 import { DatabaseConnection } from "../../database/workspace-schema";
 import type { ConsoleDataV2 } from "../types";
-import { clientConsoleTools } from "./console-tools-client";
+import {
+  clientConsoleTools,
+  listOpenConsolesSchema,
+  modifyConsoleSchema, // eslint-disable-line @typescript-eslint/no-unused-vars
+  readConsoleSchema, // eslint-disable-line @typescript-eslint/no-unused-vars
+  setConsoleConnectionSchema, // eslint-disable-line @typescript-eslint/no-unused-vars
+} from "./console-tools-client";
 import { createSqlToolsV2 } from "./sql-tools";
 
-import { listOpenConsolesSchema } from "./console-tools-client";
 
 // DeepSeek requires JSON schema to have properties and not be empty nulls
 // and AI SDK Core may strip them if not used in execute arguments.

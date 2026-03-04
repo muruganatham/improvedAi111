@@ -27,10 +27,6 @@ import {
   DatabaseDriver,
 } from "../databases/driver";
 import {
-  databaseConnectionService,
-  ConnectionConfig,
-} from "./database-connection.service";
-import {
   prepareQueryForValidation,
   substituteTemplates,
   detectTemplates,

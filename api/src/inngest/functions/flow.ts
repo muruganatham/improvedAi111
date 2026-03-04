@@ -1667,12 +1667,16 @@ export const cleanupAbandonedFlowsFunction = inngest.createFunction(
   { cron: "*/15 * * * *" }, // Run every 15 minutes
   async ({ step, logger }) => {
     const result = await step.run("cleanup-abandoned-flows", async () => {
-      const db = Flow.db;
+      const nativeDb = Flow.db?.db;
+      if (!nativeDb) {
+        logger.warn("MongoDB not connected, skipping abandoned flow cleanup");
+        return { abandonedExecutions: 0, staleLocks: 0, timestamp: new Date(), skipped: true };
+      }
       const now = new Date();
       const heartbeatTimeout = new Date(now.getTime() - 120000); // 2 minutes ago
 
-      const executionsCollection = db.collection("flow_executions");
-      const locksCollection = db.collection("flow_execution_locks");
+      const executionsCollection = nativeDb.collection("flow_executions");
+      const locksCollection = nativeDb.collection("flow_execution_locks");
 
       let abandonedCount = 0;
       let staleLockCount = 0;

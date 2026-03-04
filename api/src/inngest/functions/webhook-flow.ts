@@ -304,6 +304,12 @@ export const webhookRetryFunction = inngest.createFunction(
   { cron: "*/30 * * * *" }, // Run every 30 minutes
   async ({ step, logger }) => {
     const result = await step.run("retry-failed-events", async () => {
+      // Guard: skip if MongoDB is not connected
+      if (WebhookEvent.db?.readyState !== 1) {
+        logger.warn("MongoDB not connected, skipping webhook retry");
+        return { retried: 0, skipped: true };
+      }
+
       // Find failed events with less than 5 attempts
       const failedEvents = await WebhookEvent.find({
         status: "failed",

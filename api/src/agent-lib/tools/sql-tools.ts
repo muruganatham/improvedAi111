@@ -5,7 +5,7 @@ import mongoose from "mongoose";
 import { DatabaseConnection } from "../../database/workspace-schema";
 import { databaseConnectionService } from "../../services/database-connection.service";
 import type { ConsoleDataV2 } from "../types";
-import { clientConsoleTools } from "./console-tools-client";
+import { clientConsoleTools as _clientConsoleTools } from "./console-tools-client";
 import {
   truncateSamples,
   truncateQueryResults,
@@ -84,7 +84,7 @@ const fetchSqlDatabase = async (connectionId: string, workspaceId: string) => {
 };
 
 // Zod schemas
-const emptySchema = z.object({
+const _emptySchema = z.object({
   confirm: z.boolean().describe("Required confirmation"),
 });
 const connectionIdSchema = z.object({

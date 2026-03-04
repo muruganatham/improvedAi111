@@ -86,13 +86,15 @@ export async function initSchemaCache(): Promise<void> {
 
     // Set up periodic refresh
     if (refreshTimer) clearInterval(refreshTimer);
-    refreshTimer = setInterval(async () => {
-        const fresh = await loadFullSchema();
-        if (fresh) {
-            cachedSchemaPrompt = fresh;
-            lastRefresh = Date.now();
-            console.log(`[schema-cache] Schema refreshed at ${new Date().toISOString()}`);
-        }
+    refreshTimer = setInterval(() => {
+        void (async () => {
+            const fresh = await loadFullSchema();
+            if (fresh) {
+                cachedSchemaPrompt = fresh;
+                lastRefresh = Date.now();
+                console.log(`[schema-cache] Schema refreshed at ${new Date().toISOString()}`);
+            }
+        })();
     }, REFRESH_INTERVAL_MS);
 }
 

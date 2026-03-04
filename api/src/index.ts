@@ -189,6 +189,8 @@ async function main(): Promise<void> {
   server = serve({
     fetch: app.fetch,
     port,
+  }, (info) => {
+    console.log(`Listening on http://localhost:${info.port}`); // eslint-disable-line no-console
   });
 }
 
@@ -218,7 +220,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   // Set a timeout to force exit if shutdown hangs
   const forceExitTimeout = setTimeout(() => {
     logger.warn("Graceful shutdown timed out, forcing exit");
-    process.exit(1);
+    process.exit(1); // eslint-disable-line no-process-exit
   }, 10000); // 10 seconds
 
   try {
@@ -247,10 +249,10 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
     clearTimeout(forceExitTimeout);
     logger.info("Graceful shutdown complete");
-    process.exit(0);
+    process.exit(0); // eslint-disable-line no-process-exit
   } catch (error) {
     logger.error("Error during graceful shutdown", { error });
     clearTimeout(forceExitTimeout);
-    process.exit(1);
+    process.exit(1); // eslint-disable-line no-process-exit
   }
 }

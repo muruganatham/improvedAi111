@@ -1,7 +1,6 @@
 import { Db } from "mongodb";
 import dotenv from "dotenv";
 import { DatabaseConnection } from "../database/workspace-schema";
-import { databaseConnectionService } from "../services/database-connection.service";
 import { loggers } from "../logging";
 
 const logger = loggers.db("mongodb");

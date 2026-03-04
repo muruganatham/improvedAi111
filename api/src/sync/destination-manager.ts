@@ -1,7 +1,6 @@
 import { Db, ObjectId } from "mongodb";
 import * as crypto from "crypto";
 import * as dotenv from "dotenv";
-import { databaseConnectionService } from "../services/database-connection.service";
 
 dotenv.config();
 

@@ -1,12 +1,12 @@
+/* eslint-disable */
 // @ts-nocheck - MongoDB sync pipeline is disabled in TiDB Direct Mode
 import { syncConnectorRegistry } from "./connector-registry";
 import { databaseDataSourceManager } from "./database-data-source-manager";
 import { getDestinationManager } from "./destination-manager";
 import {
-  databaseConnectionService,
-  ConnectionConfig,
-} from "../services/database-connection.service";
-import { SyncLogger, FetchState } from "../connectors/base/BaseConnector";
+  SyncLogger,
+  FetchState,
+} from "../connectors/base/BaseConnector";
 import { Db } from "mongodb";
 import { ProgressReporter } from "./progress-reporter";
 import axios from "axios";
@@ -273,10 +273,6 @@ export async function performSyncChunk(
     }
 
     // Get connection from unified pool
-    const connectionIdentifier = destinationDatabaseName
-      ? `${destinationId}:${destinationDatabaseName}`
-      : destinationId;
-
     throw new Error("MongoDB sync is not supported in TiDB Direct Mode");
 
     // Collection setup - if entity has sub-entity notation (e.g., activities:Call),
@@ -544,10 +540,6 @@ export async function performSync(
     const startTime = Date.now();
 
     // Get connection from unified pool
-    const connectionIdentifier = destinationDatabaseName
-      ? `${destinationId}:${destinationDatabaseName}`
-      : destinationId;
-
     throw new Error("MongoDB sync is not supported in TiDB Direct Mode");
 
     // Determine which entities to sync

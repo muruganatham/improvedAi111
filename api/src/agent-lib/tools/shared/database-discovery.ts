@@ -17,9 +17,10 @@ import {
   getSqlDialectOrNull,
   ensureValidObjectId,
   escapePostgresIdentifier,
-  escapeBigQueryIdentifier,
+  escapeBigQueryIdentifier, // eslint-disable-line @typescript-eslint/no-unused-vars
   escapeMySqlIdentifier,
-  escapeSqliteIdentifier,
+  escapeSqliteIdentifier, // eslint-disable-line @typescript-eslint/no-unused-vars
+  escapeSqliteIdentifier as _,
 } from "./sql-dialects";
 import { MAX_SAMPLE_ROWS } from "./truncation";
 

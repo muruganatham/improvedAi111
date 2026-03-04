@@ -9,7 +9,6 @@ import { Hono } from "hono";
 import { Types } from "mongoose";
 import { databaseRegistry } from "../databases/registry";
 import { DatabaseDriver } from "../databases/driver";
-import { databaseConnectionService } from "../services/database-connection.service";
 import { loggers } from "../logging";
 
 const logger = loggers.api("database-tree");

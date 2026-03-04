@@ -3,7 +3,6 @@ import * as fs from "fs";
 import * as path from "path";
 import * as dotenv from "dotenv";
 import { DatabaseConnection } from "../database/workspace-schema";
-import { databaseConnectionService } from "../services/database-connection.service";
 import { loggers } from "../logging";
 
 dotenv.config();

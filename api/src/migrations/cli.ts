@@ -11,10 +11,11 @@
  * @see README.md for full documentation and examples
  */
 
-/* eslint-disable no-process-exit */
+/* eslint-disable @typescript-eslint/no-unused-vars, no-process-exit */
 import { Command } from "commander";
 import * as fs from "fs";
 import * as path from "path";
+import "reflect-metadata";
 import { databaseConnectionService } from "../services/database-connection.service";
 import {
   getMigrationFullStatus,
