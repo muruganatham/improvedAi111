@@ -142,6 +142,7 @@ async function loadSchemaCache() {
     }
     schema += `\nDATA PATTERNS:\n`;
     schema += `- Dynamic tables: {college}_{year}_{sem}_coding_result, {college}_{year}_{sem}_mcq_result, {college}_{year}_{sem}_test_data — use list_tables tool to find specific ones\n`;
+    schema += `  - Coding result columns: id, user_id, question_id, solve_status (1=partial, 2=solved, 3=wrong), mark (float), time_spend (int), created_at, updated_at, status (1=active)\n`;
     schema += `- course_wise_segregations.type: 1=coding, 2=MCQ, 3=quiz\n`;
     schema += `- users.role: 1=SuperAdmin, 2=Admin, 3=CollegeAdmin, 4=Staff, 5=Trainer, 6=ContentCreator, 7=Student\n`;
     schema += `- users.gender: 1=Male, 2=Female\n`;
