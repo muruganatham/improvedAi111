@@ -823,6 +823,7 @@ RESPONSE RULES:
 - Do NOT write essays, long lists, or multiple sections.
 - End with: "Want more details?" or a relevant follow-up question.
 - Format: Use **bold** for key terms. No ## headings for short answers.
+- Do NOT use emojis or icons in your response. Keep it professional and clean.
 This is NOT a database question — do not try to query anything.`;
 
 
@@ -830,10 +831,10 @@ This is NOT a database question — do not try to query anything.`;
 function getGreeting(userName: string, roleName: string, collegeName: string | null): string {
   // ── Student (role=7) ──
   if (roleName === "Student") {
-    return `## 🤖 Devora AI Assistant
+    return `## Devora AI Assistant
 **Hello ${userName}!** Welcome back.
 
-### 💡 Try asking me:
+### Try asking me:
 - *"Show my coding performance"*
 - *"How many coding questions have I solved?"*
 - *"What is my MCQ accuracy?"*
@@ -846,10 +847,10 @@ What would you like to know?`;
 
   // ── Staff/Trainer (role=4,5) ──
   if (roleName === "Staff" || roleName === "Trainer") {
-    return `## 🤖 Devora AI Assistant
+    return `## Devora AI Assistant
 **Hello ${userName}!** Welcome back.
 
-### 💡 Try asking me:
+### Try asking me:
 ${collegeName
         ? `- *"Top 10 students in ${collegeName}"*\n- *"How many students in ${collegeName}?"*\n- *"${collegeName} coding performance overview"*`
         : `- *"Top 10 students"*\n- *"Student performance overview"*`}
@@ -862,10 +863,10 @@ What insights would you like?`;
 
   // ── CollegeAdmin (role=3) ──
   if (roleName === "CollegeAdmin") {
-    return `## 🤖 Devora AI Assistant
+    return `## Devora AI Assistant
 **Hello ${userName}!** Welcome back.
 
-### 💡 Try asking me:
+### Try asking me:
 ${collegeName
         ? `- *"${collegeName} performance overview"*\n- *"Top students in ${collegeName}"*\n- *"Compare departments in ${collegeName}"*`
         : `- *"College performance overview"*\n- *"Top students"*`}
@@ -877,16 +878,16 @@ What would you like to explore?`;
   }
 
   // ── Admin/SuperAdmin (role=1,2) ──
-  return `## 🤖 Devora AI Assistant
+  return `## Devora AI Assistant
 **Hello ${userName}!** Welcome back.
 
-### 📊 Smart Insights I Can Provide:
-- ðŸ† *"Compare all colleges"*
-- ðŸ” *"Top 10 students platform-wide"*
-- 📈 *"How many students across all colleges?"*
-- 🎓 *"Which course has the highest enrollment?"*
-- ðŸ« *"SKCET vs SREC vs MCET comparison"*
-- 👤 *"Find student karthick"*
+### Smart Insights I Can Provide:
+- *"Compare all colleges"*
+- *"Top 10 students platform-wide"*
+- *"How many students across all colleges?"*
+- *"Which course has the highest enrollment?"*
+- *"SKCET vs SREC vs MCET comparison"*
+- *"Find student karthick"*
 
 What insights would you like to explore?`;
 }
@@ -967,7 +968,8 @@ RESPONSE STYLE:
 - Keep reports under 200 words. Use short tables or bullet points for data.
 - Don't add extra breakdowns, charts, or analysis the user didn't ask for.
 - Include ALL key numbers, just use fewer words.
-- End with: "Want a deeper breakdown?" or a relevant follow-up.`;
+- End with: "Want a deeper breakdown?" or a relevant follow-up.
+- Do NOT use emojis or icons. Keep responses professional and clean.`;
 
   const tools = {
     list_tables: tool({
@@ -1092,12 +1094,6 @@ RESPONSE STYLE:
     steps: stepsUsed,
   };
 }
-
-
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// MAIN HANDLER
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-
 // ═══════════════════════════════════════════════════════════════════════════
 // HISTORY PRE-CHECK — Don't call LLM if the answer is already in history
 // ═══════════════════════════════════════════════════════════════════════════
