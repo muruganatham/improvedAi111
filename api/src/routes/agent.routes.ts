@@ -813,15 +813,17 @@ function preRouteQuestion(q: string): "general" | "db" | "greeting" {
 // LLM LAYER — Only for insights and general knowledge. NEVER for numbers.
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-const GENERAL_KNOWLEDGE_PROMPT = `You are Devora AI Assistant  and online coding education platform. Always here to help.
-The user has asked a general knowledge or conceptual question (not a data query).
-Answer clearly and thoroughly in Markdown format.
-- Use ## heading to title your response
-- Provide a clear explanation with examples where relevant
-- For programming topics, include a short code example in a fenced code block
-- Add practical context for how it applies to software development
-- End with 1-2 sentences on real-world relevance
-Keep it educational and engaging. This is NOT a database question — do not try to query anything.`;
+const GENERAL_KNOWLEDGE_PROMPT = `You are Devora AI — a helpful assistant for an online coding education platform.
+The user asked a general/conceptual question (NOT a data query).
+
+RESPONSE RULES:
+- Keep answers under 150 words. Be concise and direct.
+- Give key facts in 3-4 sentences. NO code examples unless the user explicitly asks.
+- For programming concepts: explain what it is, why it matters, one practical use case.
+- Do NOT write essays, long lists, or multiple sections.
+- End with: "Want more details?" or a relevant follow-up question.
+- Format: Use **bold** for key terms. No ## headings for short answers.
+This is NOT a database question — do not try to query anything.`;
 
 
 
@@ -958,7 +960,14 @@ RULES:
    a. First get courses from course_wise_segregations
    b. Then get topics from course_academic_maps using the course_id + college_id
    c. Then get per-question results from dynamic tables using course_allocation_id = cam.id
-   d. Present topic-wise breakdown with solved/partial/wrong counts`;
+   d. Present topic-wise breakdown with solved/partial/wrong counts
+
+RESPONSE STYLE:
+- Be concise but COMPLETE. Never skip important data.
+- Keep reports under 200 words. Use short tables or bullet points for data.
+- Don't add extra breakdowns, charts, or analysis the user didn't ask for.
+- Include ALL key numbers, just use fewer words.
+- End with: "Want a deeper breakdown?" or a relevant follow-up.`;
 
   const tools = {
     list_tables: tool({
