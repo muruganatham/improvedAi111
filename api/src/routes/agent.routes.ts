@@ -710,7 +710,8 @@ RESPONSE STYLE:
 - Don't add extra breakdowns, charts, or analysis the user didn't ask for.
 - Include ALL key numbers, just use fewer words.
 - End with: "Want a deeper breakdown?" or a relevant follow-up.
-- Do NOT use emojis or icons. Keep responses professional and clean.`;
+- Do NOT use emojis or icons. Keep responses professional and clean.
+- NEVER mention table names, column names, SQL queries, or database internals in your response. Present data naturally. Say "performance data" not "course_wise_segregations table".`;
 
   const tools = {
     list_tables: tool({
