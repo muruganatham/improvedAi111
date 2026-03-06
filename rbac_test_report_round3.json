@@ -1,0 +1,162 @@
+[
+  {
+    "Role": "Stu",
+    "Question": "who i am?",
+    "Verdict": "❌ p=false l=false",
+    "Ms": 38879,
+    "Steps": 2,
+    "Snippet": "## Your Profile Information\\n\\n**Personal Details:**\\n- **Name:** karthick\\n- **Email:** karthick@amypo.in\\n- **Contact:** 96"
+  },
+  {
+    "Role": "Stu",
+    "Question": "my profile",
+    "Verdict": "✅",
+    "Ms": 462,
+    "Steps": 1,
+    "Snippet": "### User Profile\\n\\n| Field | Value |\\n|-------|-------|\\n| Name | karthick |\\n| Email | karthick@amypo.in |\\n| Role | Student"
+  },
+  {
+    "Role": "Stu",
+    "Question": "What is my roll number",
+    "Verdict": "❌ p=false l=false",
+    "Ms": 32587,
+    "Steps": 2,
+    "Snippet": "Your roll number is **23AMY1235**.\\n\\nHere's your complete profile information:\\n\\n**Personal Details:**\\n- **Name:** karthic"
+  },
+  {
+    "Role": "Stu",
+    "Question": "How many courses are available?",
+    "Verdict": "✅",
+    "Ms": 11640,
+    "Steps": 2,
+    "Snippet": "There are **52 courses** currently available on the platform.\\n\\nThese are all active courses that students can potentiall"
+  },
+  {
+    "Role": "Stu",
+    "Question": "How many colleges are there?",
+    "Verdict": "✅",
+    "Ms": 11687,
+    "Steps": 2,
+    "Snippet": "There are **17 active colleges** in the Amypo LMS platform."
+  },
+  {
+    "Role": "Stu",
+    "Question": "How many departments are active?",
+    "Verdict": "❌ l=true len=705",
+    "Ms": 43222,
+    "Steps": 7,
+    "Snippet": "I can see you belong to the \"BSc Artificial Intelligence and Machine Learning\" department (B.Sc. AIML), which is active "
+  },
+  {
+    "Role": "Stu",
+    "Question": "How many batches exist?",
+    "Verdict": "✅",
+    "Ms": 12279,
+    "Steps": 2,
+    "Snippet": "There are **23 active batches** in the system."
+  },
+  {
+    "Role": "Stu",
+    "Question": "Show my enrolled courses",
+    "Verdict": "✅",
+    "Ms": 79316,
+    "Steps": 4,
+    "Snippet": "## Your Enrolled Courses\\n\\nYou are currently enrolled in **2 courses**, both in the **Advanced** category:\\n\\n### 1. MCET00"
+  },
+  {
+    "Role": "Stu",
+    "Question": "my coding performance",
+    "Verdict": "✅",
+    "Ms": 65348,
+    "Steps": 4,
+    "Snippet": "## Your Coding Performance Summary\\n\\n### 📊 **Overall Statistics**\\n- **Enrolled Courses**: 2 courses\\n- **Total Coding Que"
+  },
+  {
+    "Role": "Stu",
+    "Question": "Show my MCQ results",
+    "Verdict": "✅",
+    "Ms": 54445,
+    "Steps": 3,
+    "Snippet": "## Your MCQ Results Summary\\n\\nBased on your performance data, here are your MCQ results:\\n\\n### **Course-wise Performance**"
+  },
+  {
+    "Role": "Stu",
+    "Question": "Show me the top 10 students",
+    "Verdict": "✅",
+    "Ms": 5553,
+    "Steps": 1,
+    "Snippet": "Sorry karthick! As a Student, you can only view your own data.\\n\\nYou don't have access to other students' data, rankings,"
+  },
+  {
+    "Role": "Stu",
+    "Question": "Compare all colleges performance",
+    "Verdict": "✅",
+    "Ms": 5215,
+    "Steps": 1,
+    "Snippet": "Sorry karthick! As a Student, you can only view your own data.\\n\\nYou don't have access to other students' data, rankings,"
+  },
+  {
+    "Role": "SA",
+    "Question": "platform overview",
+    "Verdict": "✅",
+    "Ms": 76611,
+    "Steps": 3,
+    "Snippet": "## Platform Overview\\n\\n### User Base\\n- **Total Users**: 4,121 active users\\n- **Students**: 4,021 (97.6% of total)\\n- **Sta"
+  },
+  {
+    "Role": "SA",
+    "Question": "show me the numbers",
+    "Verdict": "✅",
+    "Ms": 73711,
+    "Steps": 5,
+    "Snippet": "## Platform Numbers Summary\\n\\n### **User Base**\\n- **Total Users**: 4,121\\n- **Students**: 4,021 (97.6%)\\n- **Trainers**: 35"
+  },
+  {
+    "Role": "SA",
+    "Question": "how many students are there",
+    "Verdict": "✅",
+    "Ms": 15210,
+    "Steps": 3,
+    "Snippet": "There are **4,021 students** in the system."
+  },
+  {
+    "Role": "SA",
+    "Question": "how many trainers",
+    "Verdict": "✅",
+    "Ms": 17353,
+    "Steps": 3,
+    "Snippet": "There are **35 trainers** in the system."
+  },
+  {
+    "Role": "SA",
+    "Question": "Compare all colleges",
+    "Verdict": "✅",
+    "Ms": 99248,
+    "Steps": 8,
+    "Snippet": "## College Comparison Analysis\\n\\nBased on the comprehensive analysis of all 17 active colleges, here's a detailed compari"
+  },
+  {
+    "Role": "SA",
+    "Question": "Compare all colleges",
+    "Verdict": "✅",
+    "Ms": 115859,
+    "Steps": 7,
+    "Snippet": "## College Comparison Analysis\\n\\nHere's a comprehensive comparison of all 17 active colleges in the system:\\n\\n### **Overvi"
+  },
+  {
+    "Role": "CA",
+    "Question": "Show me the top 10 students in my college",
+    "Verdict": "✅",
+    "Ms": 76799,
+    "Steps": 5,
+    "Snippet": "Here are the top 10 students across all colleges based on their total scores:\\n\\n## Top 10 Students (All Colleges)\\n\\n| Rank"
+  },
+  {
+    "Role": "Stu",
+    "Question": "hi",
+    "Verdict": "✅",
+    "Ms": 435,
+    "Steps": 0,
+    "Snippet": "## Devora AI Assistant\\n**Hello karthick!** Welcome back.\\n\\n### Try asking me:\\n- *\"Show my coding performance\"*\\n- *\"How ma"
+  }
+]

@@ -263,7 +263,7 @@ function buildRoleTailoredSchema(roleNum: number): string {
 
 IDENTITY / "who am I?" / profile queries:
   Use ONE query to get profile + all course stats:
-  SELECT u.name, u.email, u.contact_number, u.roll_no, u.dob,
+  SELECT u.name, u.email, u.phone_number, u.roll_no, u.dob,
     CASE u.gender WHEN 0 THEN 'Male' WHEN 1 THEN 'Female' WHEN 2 THEN 'Other' END as gender,
     c.college_name, d.department_name, b.batch_name, s.section_name,
     ua.academic_info, ua.personal_info,
@@ -294,11 +294,120 @@ IDENTITY / "who am I?" / profile queries:
   schema += `- "my coding attempts" → action_counts JSON: att=attempts, run=code runs, ver=test verifications\n`;
   schema += `- "show my code" → main_solution column (text, student's submitted code)\n\n`;
 
-  schema += `CRITICAL AGENT RULES:\n`;
-  schema += `1. Use coding_result tables for per-question counts, NOT CWS JSON.\n`;
-  schema += `2. correct_submission_time is seconds elapsed — use created_at for dates!\n`;
-  schema += `3. Rank data lives in CWS → \`rank\` (backtick it!) and performance_rank columns.\n`;
-  schema += `4. Follow-up answers must match the depth of the original response.\n\n`;
+  schema += `CRITICAL AGENT RULES:
+1. Use coding_result tables for per-question counts, NOT CWS JSON.
+2. correct_submission_time is seconds elapsed — use created_at for dates!
+3. Follow-up answers must match the depth of the original response.
+
+═══ PORTAL DASHBOARD FORMULAS (must match portal exactly!) ═══
+
+DASHBOARD TOP CARDS:
+  Enrolled Courses = COUNT(DISTINCT course_allocation_id) FROM course_wise_segregations WHERE user_id=X AND status=1
+  Badges/Points = SUM(score) FROM course_wise_segregations WHERE user_id=X AND status=1
+  Completed Courses = courses where combined progress = 100%
+  Expired Courses = courses past end_date with incomplete progress
+
+KNOWLEDGE PROGRESS TRACKER (aggregates across ALL courses, ALL modes):
+  All these come from course_wise_segregations JSON fields.
+  Aggregate across ALL CWS rows for the student (both courses, both prepare+assess).
+
+  MCQ:
+    Questions Attended = SUM(mcq_question->'$.attend_question')
+    Questions Solved   = SUM(mcq_question->'$.solved_question')
+    Your Score         = SUM(mcq_question->'$.obtain_score')
+    Accuracy           = ROUND(SUM(mcq_question->'$.obtain_score') / SUM(mcq_question->'$.total_score') * 100)
+
+  Coding:
+    Questions Attended = SUM(coding_question->'$.attend_question')
+    Questions Solved   = SUM(coding_question->'$.solved_question')
+    Your Score         = SUM(coding_question->'$.obtain_score')
+    Accuracy           = ROUND(SUM(coding_question->'$.obtain_score') / SUM(coding_question->'$.total_score') * 100)
+
+  EXAMPLE SQL for dashboard summary:
+    SELECT
+      SUM(JSON_EXTRACT(mcq_question,'$.attend_question')) AS mcq_attended,
+      SUM(JSON_EXTRACT(mcq_question,'$.solved_question')) AS mcq_solved,
+      SUM(JSON_EXTRACT(mcq_question,'$.obtain_score')) AS mcq_score,
+      ROUND(SUM(JSON_EXTRACT(mcq_question,'$.obtain_score')) /
+            NULLIF(SUM(JSON_EXTRACT(mcq_question,'$.total_score')),0) * 100) AS mcq_accuracy,
+      SUM(JSON_EXTRACT(coding_question,'$.attend_question')) AS coding_attended,
+      SUM(JSON_EXTRACT(coding_question,'$.solved_question')) AS coding_solved,
+      SUM(JSON_EXTRACT(coding_question,'$.obtain_score')) AS coding_score,
+      ROUND(SUM(JSON_EXTRACT(coding_question,'$.obtain_score')) /
+            NULLIF(SUM(JSON_EXTRACT(coding_question,'$.total_score')),0) * 100) AS coding_accuracy,
+      COUNT(DISTINCT course_allocation_id) AS enrolled_courses,
+      SUM(score) AS badges
+    FROM course_wise_segregations
+    WHERE user_id = {userId} AND status = 1
+
+COURSE-WISE PERFORMANCE TABLE:
+  Portal shows ONE row per course with COMBINED progress (not per-mode).
+
+  Progress % = SUM(coding obtain_score + mcq obtain_score) / SUM(coding total_score + mcq total_score) * 100
+    This combines BOTH prepare (type=1) and assessment (type=2) CWS rows.
+    ⚠️ Do NOT use CWS.progress column (that's per-mode). Use the obtain/total formula.
+
+  Time Spend = SUM(time_spend) across both types, displayed as Xh Ym
+    Use FLOOR for hours and minutes (portal uses floor, not round).
+
+  Rank = CWS.\`rank\` column (department rank). \`rank\` is a reserved word — backtick it!
+    Also available: performance_rank for performance-based ranking.
+
+  EXAMPLE SQL for course-wise table:
+    SELECT
+      c.course_name,
+      ROUND(
+        (SUM(JSON_EXTRACT(cws.coding_question,'$.obtain_score')) +
+         SUM(JSON_EXTRACT(cws.mcq_question,'$.obtain_score'))) /
+        (SUM(JSON_EXTRACT(cws.coding_question,'$.total_score')) +
+         SUM(JSON_EXTRACT(cws.mcq_question,'$.total_score'))) * 100, 2
+      ) AS progress_pct,
+      CONCAT(FLOOR(SUM(cws.time_spend)/3600), 'h ', FLOOR(MOD(SUM(cws.time_spend),3600)/60), 'm') AS time_display,
+      MAX(cws.\`rank\`) AS dept_rank,
+      SUM(cws.score) AS total_score
+    FROM course_wise_segregations cws
+    JOIN courses c ON cws.course_id = c.id
+    WHERE cws.user_id = {userId} AND cws.status = 1
+    GROUP BY c.course_name
+
+CODING/MCQ QUESTION COUNTS:
+  "How many coding questions solved?" → use CWS JSON (NOT coding_result table):
+    SUM(JSON_EXTRACT(coding_question, '$.solved_question')) = total solved across all courses
+  CWS is the PRIMARY source. coding_result table only has practice-mode rows (incomplete).
+  MCQ counts from CWS also match actual mcq_result rows exactly.
+
+TIMESTAMP COLUMNS in coding_result / mcq_result:
+  ⚠️ correct_submission_time = SECONDS ELAPSED to solve (NOT unix timestamp!)
+     Example: 2489 = "took ~41 minutes". NOT a date!
+  ⚠️ first_submission_time = SECONDS ELAPSED to first attempt
+  ❌ NEVER use FROM_UNIXTIME() on these columns!
+  ✅ "when did I solve?" → use created_at column
+  ✅ "how long did it take?" → use total_time column (seconds)
+
+TIME TRACKING:
+  CWS time_spend = TOTAL cumulative seconds (all time, not per week).
+  For "total time" → SUM(time_spend) from CWS grouped by course
+  For "weekly time" → SUM(total_time) from coding_result WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+
+TEST DATA:
+  Table: {college_prefix}_{year}_{sem}_test_data
+  Columns: user_id, allocate_id, course_allocation_id, module_id, mark (JSON), total_mark (JSON), time, created_at
+  mark JSON: {co: X, mcq: Y, pro: Z} (coding, mcq, project scores)
+  "how many tests taken?" → COUNT(*) FROM {prefix}_test_data WHERE user_id=X
+
+STUDENT RANK:
+  CWS.\`rank\` = department rank | CWS.performance_rank = performance ranking
+  For "my rank" → SELECT c.course_name, cws.\`rank\` as dept_rank, cws.performance_rank
+    FROM course_wise_segregations cws JOIN courses c ON cws.course_id = c.id
+    WHERE cws.user_id=X AND cws.status=1
+  Note: \`rank\` is a MySQL reserved word — always backtick it!
+
+ASSIGNMENTS: user_assignments table
+  status: 0 = pending evaluation, 1 = evaluated/graded
+  "pending assignments" = WHERE user_id=X AND status=0
+  "graded assignments" = WHERE user_id=X AND status=1
+
+═══ END PORTAL DASHBOARD FORMULAS ═══\n\n`;
 
   schema += `IMPORTANT — Finding dynamic tables for a student:\n`;
   schema += `  The student's dynamic table prefixes are pre-fetched and provided in the ACCESS CONTROL section.\n`;
@@ -338,6 +447,52 @@ IDENTITY / "who am I?" / profile queries:
 
   schema += `CERTIFICATES: verify_certificates table\n`;
   schema += `  user_id, course_id, college_id, total_mark, mark_obtained, percentage, grade, p_id\n\n`;
+
+  schema += `\n═══ MARKETPLACE / B2C COURSES ═══\n\n`;
+
+  schema += `MARKETPLACE DETECTION (important!):\n`;
+  schema += `  A course is MARKETPLACE (B2C) when ALL 4 org fields in course_academic_maps are NULL:\n`;
+  schema += `    WHERE cam.college_id IS NULL\n`;
+  schema += `      AND cam.department_id IS NULL\n`;
+  schema += `      AND cam.batch_id IS NULL\n`;
+  schema += `      AND cam.section_id IS NULL\n`;
+  schema += `  If ANY of those 4 fields has a value → college-allocated (B2B), NOT marketplace.\n`;
+  schema += `  Additional filters: cam.b2c_details IS NOT NULL AND cam.status = 1 AND c.status = 1\n\n`;
+
+  schema += `MARKETPLACE QUERY PATTERN (always use this):\n`;
+  schema += `  cam has MULTIPLE rows per allocation_id (one per topic).\n`;
+  schema += `  Always GROUP BY cam.allocation_id and use MIN(cam.id) as the id.\n`;
+  schema += `  Example:\n`;
+  schema += `    SELECT MIN(cam.id) AS id, cam.allocation_id, c.course_name,\n`;
+  schema += `           c.course_description, c.language, cam.b2c_details,\n`;
+  schema += `           cam.course_start_date, cam.course_end_date\n`;
+  schema += `    FROM course_academic_maps cam\n`;
+  schema += `    JOIN courses c ON cam.course_id = c.id\n`;
+  schema += `    WHERE cam.college_id IS NULL AND cam.department_id IS NULL\n`;
+  schema += `      AND cam.batch_id IS NULL AND cam.section_id IS NULL\n`;
+  schema += `      AND cam.b2c_details IS NOT NULL\n`;
+  schema += `      AND cam.status = 1 AND c.status = 1\n`;
+  schema += `    GROUP BY cam.allocation_id, cam.course_start_date, cam.course_end_date,\n`;
+  schema += `             cam.b2c_details, c.course_name, c.course_description, c.language\n\n`;
+
+  schema += `MARKETPLACE KEY FACTS:\n`;
+  schema += `  - b2c_details is JSON: {"price", "material": {"id","path","qbType","qb_name"}, "isPremium"}\n`;
+  schema += `  - courses.language = JSON array of language table IDs e.g. "[4]"\n`;
+  schema += `  - Resolve language IDs via: SELECT id, language_name FROM languages WHERE status = 1\n`;
+  schema += `  - purchase_type is NOT in DB — it is computed by Laravel. Do NOT query it.\n`;
+  schema += `  - course_end_date in DB may differ from portal display (Laravel can override for B2C).\n\n`;
+
+  schema += `B2C RESULT TABLES (marketplace student progress):\n`;
+  schema += `  b2c_test_data    — test submissions (same schema as college dynamic _test_data tables)\n`;
+  schema += `  b2c_coding_result — coding answers (same schema as college dynamic _coding_result tables)\n`;
+  schema += `  b2c_mcq_result   — MCQ answers (same schema as college dynamic _mcq_result tables)\n`;
+  schema += `  Columns: user_id, allocate_id, course_allocation_id, module_id, question_id, solve_status\n\n`;
+
+  schema += `MARKETPLACE COMMON QUESTIONS:\n`;
+  schema += `  "how many marketplace/free courses?" → COUNT(DISTINCT allocation_id) with 4 NULL org fields\n`;
+  schema += `  "list marketplace courses" → use MARKETPLACE QUERY PATTERN above\n`;
+  schema += `  "marketplace enrollments" → JOIN user_course_enrollments uce ON uce.course_allocation_id = cam.allocation_id\n`;
+  schema += `  "my B2C progress" → query b2c_test_data / b2c_coding_result / b2c_mcq_result WHERE user_id = X\n\n`;
 
   schema += `HIERARCHY: courses → titles (chapters) → topics (lessons)\n`;
   schema += `  course_topic_maps: course_id → title_id → topic_id + order\n`;
@@ -663,6 +818,19 @@ RULES:
    b. Then get topics from course_academic_maps using the course_id + college_id
    c. Then get per-question results from dynamic tables using course_allocation_id = cam.id
    d. Present topic-wise breakdown with solved/partial/wrong counts
+
+FOLLOW-UP QUESTIONS:
+When the user asks a follow-up like "and how about X?" or "what about Y?",
+provide the SAME level of detail as your previous response.
+Do NOT summarize or shorten follow-up answers.
+
+STUDENT DATA BOUNDARIES:
+- You can ONLY access this student's own data.
+- If the question asks about other students, rankings, class toppers,
+  or any cross-user data, respond:
+  "I can only show your personal data. Try asking about your own
+  scores, progress, or course details."
+- Do NOT show technical error messages. Give friendly responses.
 
 RESPONSE STYLE:
 - Be concise but COMPLETE. Never skip important data.

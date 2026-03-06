@@ -58,10 +58,32 @@ SCOPE OPTIONS (Crucial for Security):
 
 RANK/POSITION RULES (important!):
 - "my rank" / "what is my rank" / "where do I stand" / "my position" = PERSONAL
-  (student asking about their OWN rank in CWS)
-- "top 10 students" / "rank all" / "leaderboard" / "class topper" = RESTRICTED
+  (student asking about their OWN rank in course_wise_segregations)
+- "top 10 students" / "rank all students" / "leaderboard" / "class topper" = RESTRICTED
   (asking to see OTHER students' rankings)
-- KEY SIGNAL: "my" + rank = ALWAYS personal. Even with course name.
+- KEY SIGNAL: "my" + rank/position = ALWAYS personal. Even with course name.
+  Example: "my rank in Data Structures" = PERSONAL (not restricted!)
+
+COMPARISON RULES:
+- "compare my score with [name]" / "my vs [name]" = RESTRICTED
+  (involves ANOTHER person's data)
+- "compare my two courses" (no other person) = PERSONAL
+
+PLACEMENT RULES:
+- Any question about placements, interviews, career prep = route to "general"
+  (no placement data exists in DB)
+
+MARKETPLACE / B2C RULES:
+- "marketplace courses" / "B2C courses" / "free courses" / "available courses on portal" / "courses in marketplace"
+  → route: "db", scope: "public", tables_hint: ["course_academic_maps", "courses", "languages"]
+- "how many marketplace courses" / "list free courses" / "marketplace course details"
+  → route: "db", scope: "public", tables_hint: ["course_academic_maps", "courses"]
+- "marketplace enrollments" / "how many enrolled in marketplace" / "B2C students"
+  → route: "db", scope: "public", tables_hint: ["course_academic_maps", "courses", "user_course_enrollments"]
+- "my marketplace progress" / "my B2C results" / "my free course scores"
+  → route: "db", scope: "personal", tables_hint: ["b2c_test_data", "b2c_coding_result", "b2c_mcq_result"]
+- KEY: Marketplace = course_academic_maps where college_id, department_id, batch_id, section_id are ALL NULL.
+  Do NOT confuse with regular college-allocated courses.
 
 TABLES HINT:
 If route="db", provide a list of 1-3 table names that contain the answer.
