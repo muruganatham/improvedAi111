@@ -248,9 +248,34 @@ function buildRoleTailoredSchema(roleNum: number): string {
   schema += `   → action_counts (JSON): {att: attempts, run: runs, ver: verifications, deb: debug}\n`;
   schema += `   → main_solution (text): the student's actual submitted code\n`;
   schema += `4. Per-question MCQ: {db}_mcq_result WHERE user_id = X AND course_allocation_id = cam.id\n`;
-  schema += `5. Test session: {db}_test_data WHERE user_id = X\n`;
-  schema += `   → mark/total_mark are JSON: {co: coding, mcq: mcq, pro: project}\n`;
-  schema += `   → question_ids (JSON array): list of question IDs in this test\n\n`;
+  schema += `5. Test session: {db}_test_data WHERE user_id = X
+   → mark/total_mark are JSON: {co: coding, mcq: mcq, pro: project}
+   → question_ids (JSON array): list of question IDs in this test
+
+IDENTITY / "who am I?" / profile queries:
+  Use ONE query to get profile + all course stats:
+  SELECT u.name, u.email, u.contact_number, u.roll_no, u.dob,
+    CASE u.gender WHEN 0 THEN 'Male' WHEN 1 THEN 'Female' WHEN 2 THEN 'Other' END as gender,
+    c.college_name, d.department_name, b.batch_name, s.section_name,
+    ua.academic_info, ua.personal_info,
+    co.course_name,
+    CASE cws.type WHEN 1 THEN 'Prepare' WHEN 2 THEN 'Assessment' END as mode,
+    cws.progress, cws.score, cws.\`rank\` as dept_rank,
+    ROUND(cws.time_spend/3600,1) as hours,
+    JSON_EXTRACT(cws.coding_question,'$.solved_question') as coding_solved,
+    JSON_EXTRACT(cws.coding_question,'$.total_question') as coding_total,
+    JSON_EXTRACT(cws.mcq_question,'$.solved_question') as mcq_solved,
+    JSON_EXTRACT(cws.mcq_question,'$.total_question') as mcq_total
+  FROM users u
+  LEFT JOIN user_academics ua ON u.id=ua.user_id AND ua.status=1
+  LEFT JOIN colleges c ON ua.college_id=c.id
+  LEFT JOIN departments d ON ua.department_id=d.id
+  LEFT JOIN batches b ON ua.batch_id=b.id
+  LEFT JOIN sections s ON ua.section_id=s.id
+  LEFT JOIN course_wise_segregations cws ON u.id=cws.user_id AND cws.status=1
+  LEFT JOIN courses co ON cws.course_id=co.id
+  WHERE u.id={user_id}
+  academic_info/personal_info are JSON with: tenth,twelth,ug,backlogs,git,linkedin\n\n`;
 
   schema += `COMMON STUDENT DEEP-DIVE QUERIES:\n`;
   schema += `- "my course details" → course_wise_segregations + courses table\n`;
@@ -396,7 +421,7 @@ function buildScopePrompt(
     prompt += `- ALWAYS add WHERE user_id = ${userId} to filter for this user's data.\n`;
     prompt += `- ONLY return THIS user's data.\n`;
     prompt += `- Do NOT fetch profile data (name, email, roll_no, college) unless the user specifically asks for it.\n`;
-    prompt += `- For "who am I" questions: query users + user_academics (name, email, roll_no, college, department, batch).\n`;
+    prompt += `- For "who am I" / "my profile": STRICTLY USE the 1-query SQL provided in the schema block below.\n`;
     prompt += `- For "my scores/progress": query course_wise_segregations WHERE user_id = ${userId}.\n`;
     prompt += `- For "my trainer": find via course_wise_segregations -> course_academic_maps -> course_staff_trainer_allocations.\n`;
     prompt += `- For "my courses/enrolled": query course_wise_segregations WHERE user_id = ${userId} AND status = 1.\n`;
