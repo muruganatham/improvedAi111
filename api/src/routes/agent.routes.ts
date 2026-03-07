@@ -18,7 +18,7 @@ import { getAvailableModels } from "../agent-lib/ai-models";
 import { databaseConnectionService } from "../services/database-connection.service";
 import { getAllAgentMeta } from "../agents";
 import { loggers } from "../logging";
-import { ROLES, canAccess, getScope, getRoleName, getSQLScope, getScopeDescription, checkRestrictedAccess, needsUserIdFilter } from "../agent-lib/role-access";
+import { ROLES, getRoleName, getSQLScope, checkRestrictedAccess, needsUserIdFilter } from "../agent-lib/role-access";
 import { classifyQuestion } from "../agent-lib/question-classifier";
 
 const logger = loggers.agent();
@@ -597,6 +597,7 @@ function buildScopePrompt(
 
   let prompt = `\n--- ACCESS CONTROL ---\n`;
   prompt += `Current user: ${name} (${roleName}, user_id=${userId})\n`;
+  prompt += `Scope: ${sqlScope.description}\n`;
   if (collegeShortName) {
     prompt += `College: ${collegeShortName} (college_id=${collegeId})\n`;
     prompt += `Dynamic tables for this student: ${(collegeDynamicTables || []).join(', ') || `Use SHOW TABLES LIKE '${collegeShortName}_%'`}\n`;
@@ -625,7 +626,7 @@ function buildScopePrompt(
   if (scope === "personal") {
     prompt += `SCOPE: PERSONAL - This user is asking about their OWN data.\n`;
     prompt += `RULES:\n`;
-    prompt += `- ALWAYS add WHERE user_id = ${userId} to filter for this user's data.\n`;
+    prompt += `- ALWAYS add "${sqlScope.whereClause}" to filter for this user's data.\n`;
     prompt += `- ONLY return THIS user's data.\n`;
     prompt += `- Do NOT fetch profile data (name, email, roll_no, college) unless the user specifically asks for it.\n`;
     prompt += `- For "who am I" / "my profile": STRICTLY USE the 1-query SQL provided in the schema block below.\n`;
@@ -676,12 +677,14 @@ function buildScopePrompt(
       prompt += `- For trainer counts: users table WHERE role = 5.\n`;
     } else {
       // College Admin / Staff / Trainer -> college scoped
-      prompt += `SCOPE: COLLEGE-SCOPED - ${roleName}, limited to their college.\n`;
-      prompt += `RULES:\n`;
-      prompt += `- Add WHERE college_id = ${collegeId} (via user_academics) to all cross-user queries.\n`;
-      prompt += `- Can see students/trainers in their college, but NOT other colleges.\n`;
-      prompt += `- Cross-college comparisons are NOT allowed.\n`;
-      prompt += `- If they ask about "my students" or "my college", use college_id = ${collegeId}.\n`;
+      if (roleNum > 2 && roleNum < 6) {
+        prompt += `SCOPE: COLLEGE-SCOPED - ${roleName}, limited to their college institution.\n`;
+        prompt += `RULES:\n`;
+        prompt += `- ALWAYS add "${sqlScope.whereClause}" to all cross-user queries to stay within your college.\n`;
+        prompt += `- Can see students/trainers in their college, but NOT other colleges.\n`;
+        prompt += `- Cross-college comparisons are NOT allowed.\n`;
+        prompt += `- If they ask about "my students" or "my college", use college_id = ${collegeId}.\n`;
+      }
     }
     prompt += `\n--- END ACCESS CONTROL ---\n`;
     return { prompt, blocked: false };
@@ -702,24 +705,28 @@ function buildScopePrompt(
 
 
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ────────────────────────────────────────────────────────────────────────────────
 // ROUTING LAYER
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ────────────────────────────────────────────────────────────────────────────────
 
+const CORE_RESPONSE_STYLE = `
+- Be concise but COMPLETE. Never skip important data.
+- Keep reports under 150-200 words. Use short tables or bullet points for data.
+- End with a relevant follow-up (e.g., "Want more details?" or "Want a deeper breakdown?").
+- Do NOT use emojis or icons. Keep responses professional and clean.
+- Format: Use **bold** for key terms. No ## headings for short answers.
+`;
 
 // LLM LAYER — Only for insights and general knowledge. NEVER for numbers.
 const GENERAL_KNOWLEDGE_PROMPT = `You are Devora AI — a helpful assistant for an online coding education platform.
 The user asked a general/conceptual question (NOT a data query).
 
 RESPONSE RULES:
-- Keep answers under 150 words. Be concise and direct.
+${CORE_RESPONSE_STYLE}
 - Give key facts in 3-4 sentences. NO code examples unless the user explicitly asks.
 - For programming concepts: explain what it is, why it matters, one practical use case.
 - Do NOT write essays, long lists, or multiple sections.
-- End with: "Want more details?" or a relevant follow-up question.
-- Format: Use **bold** for key terms. No ## headings for short answers.
-- Do NOT use emojis or icons in your response. Keep it professional and clean.
-This is NOT a database question — do not try to query anything.`;
+- This is NOT a database question — do not try to query anything.`;
 
 function getGreeting(userName: string, roleName: string, collegeName: string | null): string {
   // ── Student (role=7) ──
@@ -876,12 +883,8 @@ STUDENT DATA BOUNDARIES:
 - Do NOT show technical error messages. Give friendly responses.
 
 RESPONSE STYLE:
-- Be concise but COMPLETE. Never skip important data.
-- Keep reports under 200 words. Use short tables or bullet points for data.
-- Don't add extra breakdowns, charts, or analysis the user didn't ask for.
+${CORE_RESPONSE_STYLE}
 - Include ALL key numbers, just use fewer words.
-- End with: "Want a deeper breakdown?" or a relevant follow-up.
-- Do NOT use emojis or icons. Keep responses professional and clean.
 - NEVER mention table names, column names, SQL queries, or database internals in your response. Present data naturally. Say "performance data" not "course_wise_segregations table".`;
 
   const tools = {
@@ -1138,7 +1141,6 @@ async function handleDbQuestion(
   // ── GREETING (instant, personalized) ──
   if (route === "greeting") {
     const profile = await getUserProfile(Number(userId));
-    const roleName = getRoleName(roleNum);
     const elapsed = Date.now() - startTime;
     const response = {
       report: getGreeting(profile?.name || "there", roleName, profile?.college_name || null),
@@ -1203,7 +1205,7 @@ async function handleDbQuestion(
       }
 
       const p = data.profile;
-      const roleName = getRoleName(p.role || roleNum);
+      const profileRoleName = getRoleName(p.role || roleNum);
 
       // Build rich markdown report (same quality as LLM but instant)
       let report = `## Your Profile\n\n`;
@@ -1218,6 +1220,7 @@ async function handleDbQuestion(
       report += `- **Department:** ${p.department_name || 'N/A'}\n`;
       report += `- **Batch:** ${p.batch_name || 'N/A'}\n`;
       if (p.section_name) report += `- **Section:** ${p.section_name}\n`;
+      report += `\n**Account Role:** ${profileRoleName}\n`;
 
       if (data.courses.length > 0) {
         report += `\n**Current Course Progress:**\n\n`;
