@@ -18,7 +18,7 @@ import { getAvailableModels } from "../agent-lib/ai-models";
 import { databaseConnectionService } from "../services/database-connection.service";
 import { getAllAgentMeta } from "../agents";
 import { loggers } from "../logging";
-import { ROLES, canAccess, getScope, getRoleName, getSQLScope, getScopeDescription } from "../agent-lib/role-access";
+import { ROLES, canAccess, getScope, getRoleName, getSQLScope, getScopeDescription, checkRestrictedAccess, needsUserIdFilter } from "../agent-lib/role-access";
 import { classifyQuestion } from "../agent-lib/question-classifier";
 
 const logger = loggers.agent();
@@ -792,6 +792,7 @@ async function handleWithTools(
   history: any[],
   _options: { version: 'v1' | 'v2' },
   scopePrompt: string,
+  scope: string,
 ) {
   const chatModel = makeDeepSeekModel("deepseek-chat");
   const tokenTrackerId = `req-${userId}-${Date.now()}`;
@@ -809,9 +810,8 @@ IMPORTANT: If the user's current question was ALREADY answered in the conversati
 If it's a follow-up question, reuse the relevant tables/filters from the previous queries above.`;
   }
 
-  // Inject the scope prompt early to be able to extract the scope
-  const scopeMatch = scopePrompt.match(/SCOPE: (\w+)/);
-  const scope = scopeMatch ? scopeMatch[1].toLowerCase() : "personal";
+  // Scope is passed directly from routing
+
 
   const systemPrompt = `You are Devora AI — expert SQL analyst for coderv4 database (TiDB/MySQL).
 User: id=${userId}, role=${roleNum} (${roleName})
@@ -942,18 +942,17 @@ RESPONSE STYLE:
           // substring collisions (e.g. userId=23 matching "2372")
           const userIdRegex = new RegExp(`\\b${userId}\\b`);
 
-          // FIX #1: For students, block queries touching sensitive tables
-          // (users, user_academics) without user_id — in ALL scopes, not just personal.
+          // FIX #1 & #2: Intelligently determine if tables require user_id based on TABLE_SCOPE_MAP
           // Public catalog tables (courses, colleges, etc.) are fine without user_id.
           if (isStudentRole) {
-            const queriesUserTable = /\bfrom\s+[`]?(users|user_academics)[`]?\b/i.test(cleaned)
-              || /\bjoin\s+[`]?(users|user_academics)[`]?\b/i.test(cleaned);
-            if (queriesUserTable && !userIdRegex.test(cleaned)) {
-              return { error: `Security: Student queries on user tables must filter by user_id = ${userId}` };
-            }
-            // Personal scope: ALL queries must include user_id
-            if (scope === "personal" && !userIdRegex.test(cleaned)) {
-              return { error: `Security: Personal queries must filter by user_id = ${userId}` };
+            const tablesInQuery = cleaned.match(/(?:from|join)\s+[`]?([a-zA-Z0-9_]+)[`]?/gi)
+              ?.map((m: string) => m.replace(/(?:from|join)\s+[`]?/i, '').replace(/[`]?$/, '').toLowerCase())
+              || [];
+
+            const needsUserId = tablesInQuery.some(needsUserIdFilter);
+
+            if (needsUserId && !userIdRegex.test(cleaned)) {
+              return { error: `Security: Queries on personal data tables must filter by user_id = ${userId}` };
             }
           }
 
@@ -1101,7 +1100,6 @@ async function handleDbQuestion(
   const startTime = Date.now();
   const roleNum = Number(userRole) || 0;
   const roleName = getRoleName(roleNum);
-  const reasonerModel = makeDeepSeekModel("deepseek-reasoner");
 
   // Step 1: Run through dynamic LLM classifier
   const classificationResult = await classifyQuestion(question, roleNum, roleName);
@@ -1155,6 +1153,7 @@ async function handleDbQuestion(
 
   // ── GENERAL KNOWLEDGE (no DB) ──
   if (route === "general") {
+    const reasonerModel = makeDeepSeekModel("deepseek-reasoner");
     try {
       const result = await generateText({
         model: reasonerModel,
@@ -1255,6 +1254,23 @@ async function handleDbQuestion(
       return response;
     }
 
+    // STEP 2.5: Hardcoded security fallback — catch anything the LLM classifier missed
+    if (scope !== 'restricted' && roleNum >= 6) {
+      const restrictedCheck = checkRestrictedAccess(question, roleNum);
+      if (!restrictedCheck.allowed) {
+        const elapsed = Date.now() - startTime;
+        const response = {
+          report: `Sorry! ${restrictedCheck.reason}. Try asking about your own data.`,
+          sql: null, steps: 0,
+          inputToken: totalInputToken, outputToken: totalOutputToken,
+          responseTime: elapsed,
+          responseTimeSec: (elapsed / 1000).toFixed(1),
+        };
+        setCache(responseCacheKey, response, 5 * 60_000);
+        return response;
+      }
+    }
+
     // STEP 3: Build scope prompt for LLM
     const profile = await getUserProfile(numUserId);
     const collegeId = profile?.college_id || null;
@@ -1263,29 +1279,31 @@ async function handleDbQuestion(
     // Pre-fetch dynamic table prefixes using cam.db (NOT college_short_name!)
     // cam.db is the ACTUAL table prefix — handles mismatches like dotlab≠demolab, skacas≠skasc
     let dynamicTables: string[] = [];
-    try {
-      const dbRes = await runQuery(`
-        SELECT DISTINCT cam.db
-        FROM course_wise_segregations cws
-        JOIN course_academic_maps cam ON cws.course_allocation_id = cam.allocation_id
-        WHERE cws.user_id = ${numUserId} AND cam.db IS NOT NULL AND cws.status = 1
-      `);
-      const dbPrefixes = (dbRes.rows || []).map((r: any) => r.db as string).filter(Boolean);
+    if (scope === 'personal') {
+      try {
+        const dbRes = await runQuery(`
+          SELECT DISTINCT cam.db
+          FROM course_wise_segregations cws
+          JOIN course_academic_maps cam ON cws.course_allocation_id = cam.allocation_id
+          WHERE cws.user_id = ${numUserId} AND cam.db IS NOT NULL AND cws.status = 1
+        `);
+        const dbPrefixes = (dbRes.rows || []).map((r: any) => r.db as string).filter(Boolean);
 
-      if (dbPrefixes.length > 0) {
-        // Fetch actual table names for each prefix
-        for (const prefix of dbPrefixes) {
-          const tablesRes = await runQuery(`SHOW TABLES LIKE '${prefix}_%'`);
-          const tables = (tablesRes.rows || []).map((r: any) => Object.values(r)[0] as string);
-          dynamicTables.push(...tables);
+        if (dbPrefixes.length > 0) {
+          // Fetch actual table names for each prefix
+          for (const prefix of dbPrefixes) {
+            const tablesRes = await runQuery(`SHOW TABLES LIKE '${prefix}_%'`);
+            const tables = (tablesRes.rows || []).map((r: any) => Object.values(r)[0] as string);
+            dynamicTables.push(...tables);
+          }
+        } else if (collegeShort) {
+          // Fallback: use college_short_name if cam.db lookup returns nothing
+          const tablesRes = await runQuery(`SHOW TABLES LIKE '${collegeShort}_%'`);
+          dynamicTables = (tablesRes.rows || []).map((r: any) => Object.values(r)[0] as string);
         }
-      } else if (collegeShort) {
-        // Fallback: use college_short_name if cam.db lookup returns nothing
-        const tablesRes = await runQuery(`SHOW TABLES LIKE '${collegeShort}_%'`);
-        dynamicTables = (tablesRes.rows || []).map((r: any) => Object.values(r)[0] as string);
+      } catch (err: any) {
+        logger.error(`[dynamic-tables] Failed to fetch: ${err.message}`);
       }
-    } catch (err: any) {
-      logger.error(`[dynamic-tables] Failed to fetch: ${err.message}`);
     }
 
     const scopeResult = buildScopePrompt(roleNum, numUserId, collegeId, scope, profile?.name, collegeShort, dynamicTables);
@@ -1312,7 +1330,7 @@ async function handleDbQuestion(
 
     // STEP 5: LLM with tools — the brain does the work
     logger.info(`LLM with tools (${options.version})`, { userId, role: roleNum, scope });
-    const result = await handleWithTools(question, numUserId, roleNum, history, options, scopeResult.prompt);
+    const result = await handleWithTools(question, numUserId, roleNum, history, options, scopeResult.prompt, scope);
     const totalTime = Date.now() - startTime;
 
     totalInputToken += result.inputToken || 0;
@@ -1339,6 +1357,7 @@ async function handleDbQuestion(
 
 // ── POST /chat ─────────────────────────────────────────────────────────────────
 agentRoutes.post("/chat", async (c) => {
+  const startTime = Date.now();
   let body: Record<string, any> = {};
   try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body" }, 400); }
 
@@ -1358,12 +1377,17 @@ agentRoutes.post("/chat", async (c) => {
     const response = await handleDbQuestion(question, userId, user_role, history, consoleId, { version: 'v1' });
     return c.json(response);
   } catch (err: any) {
-    return c.json({ error: err.message }, 500);
+    return c.json({
+      error: err.message,
+      responseTime: Date.now() - startTime,
+      responseTimeSec: ((Date.now() - startTime) / 1000).toFixed(1)
+    }, 500);
   }
 });
 
 // ── POST /chat-v2 ──────────────────────────────────────────────────────────────
 agentRoutes.post("/chat-v2", async (c) => {
+  const startTime = Date.now();
   let body: Record<string, any> = {};
   try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body" }, 400); }
 
@@ -1378,6 +1402,10 @@ agentRoutes.post("/chat-v2", async (c) => {
     const response = await handleDbQuestion(question, userId, user_role, history, undefined, { version: 'v2' });
     return c.json(response);
   } catch (err: any) {
-    return c.json({ error: err.message }, 500);
+    return c.json({
+      error: err.message,
+      responseTime: Date.now() - startTime,
+      responseTimeSec: ((Date.now() - startTime) / 1000).toFixed(1)
+    }, 500);
   }
 });

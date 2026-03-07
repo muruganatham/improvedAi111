@@ -104,10 +104,10 @@ export function checkRestrictedAccess(
     const q = question.toLowerCase();
     const roleName = getRoleName(userRole);
 
-    if (/(?:all|list|show|every)\s*students?/.test(q) && !canAccess(userRole, "VIEW_STUDENTS")) {
+    if (/(?:all|list|show|every|total|count|number)\s*(?:of\s+)?students?/.test(q) && !canAccess(userRole, "VIEW_STUDENTS")) {
         return { allowed: false, reason: `${roleName} cannot view student lists` };
     }
-    if (/(?:topper|top\s*\d+|best|highest|rank)/.test(q) && !canAccess(userRole, "TOP_STUDENTS")) {
+    if (/(?:topper|top\s*\d+|best|highest|rank|leaderboard|class\s*rank)/.test(q) && !canAccess(userRole, "TOP_STUDENTS")) {
         return { allowed: false, reason: `${roleName} cannot view top students` };
     }
     if (/(?:search|find)\s*(?:user|student)/.test(q) && !canAccess(userRole, "SEARCH_USERS")) {
@@ -201,4 +201,28 @@ export const TABLE_SCOPE_MAP: Record<string, { isPublicCatalog?: boolean; hasUse
     'course_wise_segregations': { hasUserId: true, userColumn: 'user_id' },
     'user_course_enrollments': { hasUserId: true, userColumn: 'user_id' },
     'a_i_high_lights': { hasUserId: true, userColumn: 'user_id' },
+    'user_assignments': { hasUserId: true, userColumn: 'user_id' },
+    'b2c_test_data': { hasUserId: true, userColumn: 'user_id' },
+    'b2c_coding_result': { hasUserId: true, userColumn: 'user_id' },
+    'b2c_mcq_result': { hasUserId: true, userColumn: 'user_id' },
+    'titles': { isPublicCatalog: true },
+    'course_topic_maps': { isPublicCatalog: true },
 };
+
+/**
+ * Helper to determine if a table requires user_id filtering
+ */
+export function needsUserIdFilter(tableName: string): boolean {
+    const mapped = TABLE_SCOPE_MAP[tableName.toLowerCase()];
+    if (mapped?.isPublicCatalog) return false;
+    if (mapped?.hasUserId) return true;
+
+    // Dynamic tables: *_coding_result, *_mcq_result, *_test_data
+    if (/_(coding_result|mcq_result|test_data)$/i.test(tableName)) return true;
+
+    // B2C tables
+    if (/^b2c_(coding_result|mcq_result|test_data)$/i.test(tableName)) return true;
+
+    // Default to true for unknown tables as a safe fallback
+    return true;
+}

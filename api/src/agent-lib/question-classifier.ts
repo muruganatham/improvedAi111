@@ -130,7 +130,7 @@ export async function classifyQuestion(question: string, roleNum: number, roleNa
         logger.info("[LLM-Classifier]", { result: parsed });
 
         // Safety fallback: if personal data is asked but wasn't caught
-        if (parsed.scope === "public" && /my|i\s|me/i.test(q)) {
+        if (parsed.scope === "public" && /\b(my|i|me|myself)\b/i.test(q)) {
             parsed.scope = "personal";
             parsed.reason = "fallback to personal due to self-reference";
         }
