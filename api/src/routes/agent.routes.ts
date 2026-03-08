@@ -27,6 +27,9 @@ export const agentRoutes = new Hono();
 // Global token tracker for the current request
 export const deepseekUsages = new Map<string, { input: number, output: number, timestamp: number }>();
 
+// Fix 4: Follow-up memory — stores last Q&A per user for context awareness
+const userLastContext = new Map<number, { question: string, answer: string, sql: string }>();
+
 // Garbage collector for token tracker (cleans up dangling pointers from DeepSeek API timeouts)
 setInterval(() => {
   const cutoff = Date.now() - 300_000; // 5 mins
@@ -377,9 +380,7 @@ CODING/MCQ QUESTION COUNTS:
   MCQ counts from CWS also match actual mcq_result rows exactly.
 
 TIMESTAMP COLUMNS in coding_result / mcq_result:
-  ⚠️ correct_submission_time = SECONDS ELAPSED to solve (NOT unix timestamp!)
-     Example: 2489 = "took ~41 minutes". NOT a date!
-  ⚠️ first_submission_time = SECONDS ELAPSED to first attempt
+  ⚠️ correct_submission_time & first_submission_time = SECONDS ELAPSED (duration), NOT unix timestamps. Use created_at column for actual dates/times.
   ❌ NEVER use FROM_UNIXTIME() on these columns!
   ✅ "when did I solve?" → use created_at column
   ✅ "how long did it take?" → use total_time column (seconds)
@@ -505,6 +506,30 @@ ASSIGNMENTS: user_assignments table
     schema += `AI USAGE COLUMNS (users table):\n`;
     schema += `  stats_chat_count (int), stats_words_generated (bigint), active_streak (int), last_active_date\n`;
   }
+
+  schema += `\nEMPTY DATA RULES (CRITICAL — follow strictly):\n`;
+  schema += `  1. If course_wise_segregations returns 0 rows for a user_id → the user\n`;
+  schema += `     has NO enrolled courses. This also means:\n`;
+  schema += `     - NO rank data exists (do not query for rank)\n`;
+  schema += `     - NO progress data exists (do not query for progress)\n`;
+  schema += `     - NO test scores exist (do not query dynamic tables)\n`;
+  schema += `     - NO time spent data exists\n`;
+  schema += `     Report: "You don't have any enrolled courses yet." and STOP.\n`;
+  schema += `     Maximum 2 SQL queries for empty results, then give final answer.\n`;
+  schema += `  2. For PUBLIC catalog questions (topics in a course, course list, college list):\n`;
+  schema += `     Query catalog tables directly — course_topic_maps, courses, topics,\n`;
+  schema += `     course_academic_maps, colleges. These do NOT need user_id filter.\n`;
+  schema += `     Do NOT search dynamic tables for catalog info.\n`;
+  schema += `  3. If first query returns 0 rows and second query also returns 0 rows →\n`;
+  schema += `     STOP immediately. Do not try a third query. The data does not exist.\n\n`;
+
+  schema += `RANK QUERIES:\n`;
+  schema += `  - User rank is stored in course_wise_segregations.\`rank\` column\n`;
+  schema += `  - If user has 0 CWS rows → they have NO rank. Report "no rank data" immediately.\n`;
+  schema += `  - Do NOT try to calculate rank by comparing with other students.\n`;
+  schema += `  - Do NOT query other users' data to determine rank.\n`;
+  schema += `  - Single query: SELECT \`rank\` FROM course_wise_segregations WHERE user_id={id}\n`;
+  schema += `    If 0 rows → "You don't have a rank yet (no enrolled courses)." STOP.\n\n`;
 
   return schema;
 }
@@ -726,7 +751,12 @@ ${CORE_RESPONSE_STYLE}
 - Give key facts in 3-4 sentences. NO code examples unless the user explicitly asks.
 - For programming concepts: explain what it is, why it matters, one practical use case.
 - Do NOT write essays, long lists, or multiple sections.
-- This is NOT a database question — do not try to query anything.`;
+- This is NOT a database question — do not try to query anything.
+
+HONESTY RULE: If you don't have specific knowledge about a company's internal architecture,
+proprietary systems, or platform build logic, say "I don't have detailed information about that."
+Do NOT make up technical details, tech stacks, or architecture diagrams.
+Only share what you genuinely know.`;
 
 function getGreeting(userName: string, roleName: string, collegeName: string | null): string {
   // ── Student (role=7) ──
@@ -1103,9 +1133,18 @@ async function handleDbQuestion(
   const startTime = Date.now();
   const roleNum = Number(userRole) || 0;
   const roleName = getRoleName(roleNum);
+  const numericUserId = Number(userId) || 0;
+
+  // Fix 4: Inject last conversation context for follow-up awareness
+  const lastCtx = userLastContext.get(numericUserId);
+  let classifierQuestion = question;
+  if (lastCtx && /^(and |what about |how about |same for |also |and\?)/i.test(question.trim())) {
+    // Prepend context so classifier understands this is a follow-up
+    classifierQuestion = `[Follow-up to: "${lastCtx.question}"] ${question}`;
+  }
 
   // Step 1: Run through dynamic LLM classifier
-  const classificationResult = await classifyQuestion(question, roleNum, roleName);
+  const classificationResult = await classifyQuestion(classifierQuestion, roleNum, roleName);
   const { route, scope, tables_hint, usage: classUsage } = classificationResult;
 
   // IMPORTANT: We use the normalized question as the cache key to safely deduplicate identical consecutive questions,
@@ -1156,6 +1195,7 @@ async function handleDbQuestion(
   // ── GENERAL KNOWLEDGE (no DB) ──
   if (route === "general") {
     const reasonerModel = makeDeepSeekModel("deepseek-reasoner");
+    const chatModel = makeDeepSeekModel("deepseek-chat");
     try {
       const result = await generateText({
         model: reasonerModel,
@@ -1166,9 +1206,31 @@ async function handleDbQuestion(
       });
       totalInputToken += (result.usage as any)?.inputTokens || (result.usage as any)?.promptTokens || 0;
       totalOutputToken += (result.usage as any)?.outputTokens || (result.usage as any)?.completionTokens || 0;
+
+      let reportText = result.text?.trim() || "";
+
+      // Fix 3: If reasoner returns empty, retry once with deepseek-chat as fallback
+      if (!reportText || reportText.length === 0) {
+        logger.warn(`[general] Reasoner returned empty for: "${question.slice(0, 50)}", falling back to deepseek-chat`);
+        try {
+          const fallback = await generateText({
+            model: chatModel,
+            system: GENERAL_KNOWLEDGE_PROMPT,
+            messages: [{ role: "user" as const, content: question.trim() }],
+            maxOutputTokens: 512,
+            temperature: 0.3,
+          });
+          totalInputToken += (fallback.usage as any)?.inputTokens || (fallback.usage as any)?.promptTokens || 0;
+          totalOutputToken += (fallback.usage as any)?.outputTokens || (fallback.usage as any)?.completionTokens || 0;
+          reportText = fallback.text?.trim() || "";
+        } catch { /* fallback also failed, keep empty */ }
+      }
+
       const elapsed = Date.now() - startTime;
       const response = {
-        report: result.text?.trim() || "I couldn't generate an answer.",
+        report: reportText && reportText.length > 0
+          ? reportText
+          : "I couldn't generate an answer for that question. Could you rephrase it or ask something more specific?",
         sql: null, steps: 1,
         inputToken: totalInputToken, outputToken: totalOutputToken,
         responseTime: elapsed,
@@ -1190,72 +1252,68 @@ async function handleDbQuestion(
     // STEP 2: Handle IDENTITY fast-path — rich profile, zero LLM calls
     if (classificationResult.reason === "identity") {
       const data = await getUserProfileFull(numUserId);
-      const elapsed = Date.now() - startTime;
 
       if (!data) {
+        // Profile not found in fast-path — fall through to LLM tool path
+        // instead of dead-ending with "Could not find your profile"
+        logger.info(`[identity] Fast-path returned null for user ${numUserId}, falling through to LLM`);
+        // Don't return — let it continue to STEP 2.5 → STEP 3 → LLM with tools
+      } else {
+
+        const p = data.profile;
+        const profileRoleName = getRoleName(p.role || roleNum);
+
+        // Build rich markdown report (same quality as LLM but instant)
+        let report = `## Your Profile\n\n`;
+        report += `**Personal Information:**\n`;
+        report += `- **Name:** ${p.name}\n`;
+        report += `- **Email:** ${p.email}\n`;
+        report += `- **Roll Number:** ${p.roll_no || 'N/A'}\n`;
+        if (p.dob) report += `- **Date of Birth:** ${new Date(p.dob).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}\n`;
+        if (p.gender && p.gender !== 'Not set') report += `- **Gender:** ${p.gender}\n`;
+        report += `\n**Academic Information:**\n`;
+        report += `- **College:** ${p.college_name || 'N/A'}\n`;
+        report += `- **Department:** ${p.department_name || 'N/A'}\n`;
+        report += `- **Batch:** ${p.batch_name || 'N/A'}\n`;
+        if (p.section_name) report += `- **Section:** ${p.section_name}\n`;
+        report += `\n**Account Role:** ${profileRoleName}\n`;
+
+        if (data.courses.length > 0) {
+          report += `\n**Current Course Progress:**\n\n`;
+          report += `| Course | Progress | Time Spent | Dept Rank | Score |\n`;
+          report += `|--------|----------|------------|-----------|-------|\n`;
+          for (const c of data.courses) {
+            report += `| ${c.course_name} | ${c.progress_pct || 0}% | ${c.time_display} | ${c.dept_rank || '-'} | ${c.total_score || 0} |\n`;
+          }
+          report += `\n**Summary:**\n`;
+          report += `You're currently enrolled in ${data.courses.length} course${data.courses.length > 1 ? 's' : ''}. `;
+          const best = data.courses[0];
+          if (best) {
+            report += `Your strongest progress is in **${best.course_name}** at ${best.progress_pct || 0}% completion.`;
+          }
+          report += `\n\nWant to see a detailed breakdown for any course?`;
+        } else {
+          report += `\nNo course enrollments found yet.`;
+        }
+
+        logger.info(`Agent chat complete — identity fast-path`, {
+          userId, totalTimeMs: Date.now() - startTime
+        });
+
+        const identityElapsed = Date.now() - startTime;
         const response = {
-          report: "Could not find your profile.",
-          sql: null, steps: 0,
-          inputToken: totalInputToken, outputToken: totalOutputToken,
-          responseTime: elapsed,
-          responseTimeSec: (elapsed / 1000).toFixed(1),
+          report,
+          sql: null,
+          steps: 0,
+          inputToken: totalInputToken,
+          outputToken: totalOutputToken,
+          responseTime: identityElapsed,
+          responseTimeSec: (identityElapsed / 1000).toFixed(1),
         };
         setCache(responseCacheKey, response, 5 * 60_000);
         return response;
-      }
-
-      const p = data.profile;
-      const profileRoleName = getRoleName(p.role || roleNum);
-
-      // Build rich markdown report (same quality as LLM but instant)
-      let report = `## Your Profile\n\n`;
-      report += `**Personal Information:**\n`;
-      report += `- **Name:** ${p.name}\n`;
-      report += `- **Email:** ${p.email}\n`;
-      report += `- **Roll Number:** ${p.roll_no || 'N/A'}\n`;
-      if (p.dob) report += `- **Date of Birth:** ${new Date(p.dob).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}\n`;
-      if (p.gender && p.gender !== 'Not set') report += `- **Gender:** ${p.gender}\n`;
-      report += `\n**Academic Information:**\n`;
-      report += `- **College:** ${p.college_name || 'N/A'}\n`;
-      report += `- **Department:** ${p.department_name || 'N/A'}\n`;
-      report += `- **Batch:** ${p.batch_name || 'N/A'}\n`;
-      if (p.section_name) report += `- **Section:** ${p.section_name}\n`;
-      report += `\n**Account Role:** ${profileRoleName}\n`;
-
-      if (data.courses.length > 0) {
-        report += `\n**Current Course Progress:**\n\n`;
-        report += `| Course | Progress | Time Spent | Dept Rank | Score |\n`;
-        report += `|--------|----------|------------|-----------|-------|\n`;
-        for (const c of data.courses) {
-          report += `| ${c.course_name} | ${c.progress_pct || 0}% | ${c.time_display} | ${c.dept_rank || '-'} | ${c.total_score || 0} |\n`;
-        }
-        report += `\n**Summary:**\n`;
-        report += `You're currently enrolled in ${data.courses.length} course${data.courses.length > 1 ? 's' : ''}. `;
-        const best = data.courses[0];
-        if (best) {
-          report += `Your strongest progress is in **${best.course_name}** at ${best.progress_pct || 0}% completion.`;
-        }
-        report += `\n\nWant to see a detailed breakdown for any course?`;
-      } else {
-        report += `\nNo course enrollments found yet.`;
-      }
-
-      logger.info(`Agent chat complete — identity fast-path`, {
-        userId, totalTimeMs: elapsed
-      });
-
-      const response = {
-        report,
-        sql: null,
-        steps: 0,
-        inputToken: totalInputToken,
-        outputToken: totalOutputToken,
-        responseTime: elapsed,
-        responseTimeSec: (elapsed / 1000).toFixed(1),
-      };
-      setCache(responseCacheKey, response, 5 * 60_000);
-      return response;
-    }
+      } // end of else (data found)
+    } // end of identity fast-path
 
     // STEP 2.5: Hardcoded security fallback — catch anything the LLM classifier missed
     if (scope !== 'restricted' && roleNum >= 6) {
@@ -1348,6 +1406,10 @@ async function handleDbQuestion(
       responseTimeSec: (totalTime / 1000).toFixed(1),
     };
     setCache(responseCacheKey, response, 5 * 60_000);
+
+    // Fix 4: Save last Q&A for follow-up context
+    userLastContext.set(numericUserId, { question, answer: response.report || '', sql: response.sql || '' });
+
     return response;
 
   } catch (err) {

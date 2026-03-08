@@ -10,37 +10,37 @@ const logger = loggers.agent();
 
 // Configure DeepSeek provider
 const patchedFetch = async (url: string, options: any) => {
-    if (options?.body) {
-        try {
-            const body = JSON.parse(options.body);
-            if (Array.isArray(body.tools)) {
-                body.tools = body.tools.map((t: any) => {
-                    if (t.type === "function" && t.function?.parameters && !t.function.parameters.type) {
-                        t.function.parameters.type = "object";
-                    }
-                    return t;
-                });
-                options.body = JSON.stringify(body);
-            }
-        } catch { /* not JSON */ }
-    }
-    return fetch(url, options);
+  if (options?.body) {
+    try {
+      const body = JSON.parse(options.body);
+      if (Array.isArray(body.tools)) {
+        body.tools = body.tools.map((t: any) => {
+          if (t.type === "function" && t.function?.parameters && !t.function.parameters.type) {
+            t.function.parameters.type = "object";
+          }
+          return t;
+        });
+        options.body = JSON.stringify(body);
+      }
+    } catch { /* not JSON */ }
+  }
+  return fetch(url, options);
 };
 
 const deepseekProvider = createOpenAI({
-    apiKey: process.env.DEEPSEEK_API_KEY,
-    baseURL: "https://api.deepseek.com",
-    fetch: patchedFetch as any,
+  apiKey: process.env.DEEPSEEK_API_KEY,
+  baseURL: "https://api.deepseek.com",
+  fetch: patchedFetch as any,
 });
 
 export type QuestionScope = "public" | "personal" | "restricted";
 
 export interface ClassificationResult {
-    route: "db" | "general" | "greeting";
-    scope: QuestionScope;
-    reason: string;
-    tables_hint: string[];
-    usage?: { promptTokens: number; completionTokens: number };
+  route: "db" | "general" | "greeting";
+  scope: QuestionScope;
+  reason: string;
+  tables_hint: string[];
+  usage?: { promptTokens: number; completionTokens: number };
 }
 
 const CLASSIFIER_SYSTEM_PROMPT = `You are the Security Router for an educational database.
@@ -57,21 +57,36 @@ SCOPE OPTIONS (Crucial for Security):
 - "restricted": Asking about OTHER PEOPLE'S data, comparing users, ranking, asking for passwords, or counting students. Examples: "top 10 students", "who is Karthick", "compare my score with Ravi", "show me all passwords".
 
 RANK/POSITION RULES (important!):
-- "my rank" / "what is my rank" / "where do I stand" / "my position" = PERSONAL
-  (student asking about their OWN rank in course_wise_segregations)
-- "top 10 students" / "rank all students" / "leaderboard" / "class topper" = RESTRICTED
-  (asking to see OTHER students' rankings)
-- KEY SIGNAL: "my" + rank/position = ALWAYS personal. Even with course name.
-  Example: "my rank in Data Structures" = PERSONAL (not restricted!)
+- "my rank", "my position", "my standing", "where do I rank", "where do I stand" = PERSONAL (NOT restricted).
+- "Rank" is only "restricted" when asking about OTHER students' ranks like "rank all students", "top 10 students", "class toppers".
+- Rule: "my" + rank/position = personal
+       rank WITHOUT "my" about others = restricted
+
+IDENTITY RULES (important!):
+IMPORTANT — These are DATABASE questions, NOT general questions:
+- "who am I", "who i am", "my profile", "tell about me", "my details", 
+  "my info", "about me", "my account" 
+  → route: "db", scope: "personal"
+  (These need SQL lookup from users table with user_id filter)
+Do NOT route these to "general". The user is asking about their 
+stored profile data, not a philosophical question.
 
 COMPARISON RULES:
 - "compare my score with [name]" / "my vs [name]" = RESTRICTED
   (involves ANOTHER person's data)
 - "compare my two courses" (no other person) = PERSONAL
 
-PLACEMENT RULES:
-- Any question about placements, interviews, career prep = route to "general"
-  (no placement data exists in DB)
+TIME & DURATION QUESTIONS → route: "db", scope: "personal":
+- "how much time", "time spent", "hours spent", "time on",
+  "how long have I", "total time", "my time"
+  These need SQL lookup from course_wise_segregations.time_spend column.
+  NEVER route time/duration questions to "general".
+
+FOLLOW-UP QUESTIONS:
+- "and how about X", "what about Y", "same for Z", "and X?"
+  If the question references a course, subject, or data topic,
+  treat it as route: "db", scope: "personal".
+  Do NOT route follow-ups to "general" unless clearly conceptual.
 
 MARKETPLACE / B2C RULES:
 - "marketplace courses" / "B2C courses" / "free courses" / "available courses on portal" / "courses in marketplace"
@@ -100,52 +115,52 @@ Generate ONLY a valid JSON object matching this schema. No markdown wrapping.
 }`;
 
 export async function classifyQuestion(question: string, roleNum: number, roleName: string): Promise<ClassificationResult> {
-    const q = question.trim();
+  const q = question.trim();
 
-    // SUPER FAST PATH FOR GREETINGS
-    if (/^(hi|hello|hey|greetings)[^a-z0-9]*$/i.test(q)) {
-        return { route: "greeting", scope: "public", reason: "simple greeting", tables_hint: [], usage: { promptTokens: 0, completionTokens: 0 } };
+  // SUPER FAST PATH FOR GREETINGS
+  if (/^(hi|hello|hey|greetings)[^a-z0-9]*$/i.test(q)) {
+    return { route: "greeting", scope: "public", reason: "simple greeting", tables_hint: [], usage: { promptTokens: 0, completionTokens: 0 } };
+  }
+
+  // SUPER FAST PATH FOR PURE IDENTITY
+  if (/^\s*(who\s+am\s+i|who\s+i\s+am|my\s+profile)\s*\??\s*$/i.test(q)) {
+    return { route: "db", scope: "personal", reason: "identity", tables_hint: ["users", "user_academics"], usage: { promptTokens: 0, completionTokens: 0 } };
+  }
+
+  try {
+    const { text, usage } = await generateText({
+      model: deepseekProvider.chat("deepseek-chat"),
+      system: CLASSIFIER_SYSTEM_PROMPT,
+      messages: [
+        { role: "user", content: `User Role: ${roleNum} (${roleName})\nQuestion: "${q}"` }
+      ],
+      temperature: 0,
+      maxOutputTokens: 250,
+    });
+
+    const cleanedText = text.replace(/^\s*\`\`\`(json)?/, "").replace(/\`\`\`\s*$/, "").trim();
+    const parsed = JSON.parse(cleanedText) as ClassificationResult;
+    parsed.usage = { promptTokens: (usage as any)?.inputTokens || 0, completionTokens: (usage as any)?.outputTokens || 0 };
+
+    logger.info("[LLM-Classifier]", { result: parsed });
+
+    // Safety fallback: if personal data is asked but wasn't caught
+    if (parsed.scope === "public" && /\b(my|i|me|myself)\b/i.test(q)) {
+      parsed.scope = "personal";
+      parsed.reason = "fallback to personal due to self-reference";
     }
 
-    // SUPER FAST PATH FOR PURE IDENTITY
-    if (/^\s*(who\s+am\s+i|who\s+i\s+am|my\s+profile)\s*\??\s*$/i.test(q)) {
-        return { route: "db", scope: "personal", reason: "identity", tables_hint: ["users", "user_academics"], usage: { promptTokens: 0, completionTokens: 0 } };
-    }
+    return parsed;
 
-    try {
-        const { text, usage } = await generateText({
-            model: deepseekProvider.chat("deepseek-chat"),
-            system: CLASSIFIER_SYSTEM_PROMPT,
-            messages: [
-                { role: "user", content: `User Role: ${roleNum} (${roleName})\nQuestion: "${q}"` }
-            ],
-            temperature: 0,
-            maxOutputTokens: 250,
-        });
-
-        const cleanedText = text.replace(/^\s*\`\`\`(json)?/, "").replace(/\`\`\`\s*$/, "").trim();
-        const parsed = JSON.parse(cleanedText) as ClassificationResult;
-        parsed.usage = { promptTokens: (usage as any)?.inputTokens || 0, completionTokens: (usage as any)?.outputTokens || 0 };
-
-        logger.info("[LLM-Classifier]", { result: parsed });
-
-        // Safety fallback: if personal data is asked but wasn't caught
-        if (parsed.scope === "public" && /\b(my|i|me|myself)\b/i.test(q)) {
-            parsed.scope = "personal";
-            parsed.reason = "fallback to personal due to self-reference";
-        }
-
-        return parsed;
-
-    } catch (error: any) {
-        logger.error("[LLM-Classifier] Failed, falling back to safe defaults", { error: error.message });
-        // Failsafe: if the LLM fails, assume it's a DB query for personal data (safest possible combination)
-        return {
-            route: "db",
-            scope: "personal",
-            reason: "fallback default",
-            tables_hint: [],
-            usage: { promptTokens: 0, completionTokens: 0 }
-        };
-    }
+  } catch (error: any) {
+    logger.error("[LLM-Classifier] Failed, falling back to safe defaults", { error: error.message });
+    // Failsafe: if the LLM fails, assume it's a DB query for personal data (safest possible combination)
+    return {
+      route: "db",
+      scope: "personal",
+      reason: "fallback default",
+      tables_hint: [],
+      usage: { promptTokens: 0, completionTokens: 0 }
+    };
+  }
 }
