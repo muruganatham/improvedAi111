@@ -93,14 +93,18 @@ export function getRoleName(roleNum: number): string {
 export function checkRestrictedAccess(
     question: string,
     userRole: number,
+    scope?: string
 ): { allowed: boolean; reason?: string } {
+    if (scope === 'personal') return { allowed: true };
     const q = question.toLowerCase();
     const roleName = getRoleName(userRole);
 
     if (/(?:all|list|show|every|total|count|number)\s*(?:of\s+)?students?/.test(q) && !canAccess(userRole, "VIEW_STUDENTS")) {
         return { allowed: false, reason: `${roleName} cannot view student lists` };
     }
-    if (/(?:topper|top\s*\d+|best|highest|rank|leaderboard|class\s*rank)/.test(q) && !canAccess(userRole, "TOP_STUDENTS")) {
+    // Allow "my rank" / "my position" — these are personal data, not restricted
+    const isPersonalRank = /\b(my)\s+(rank|position|standing)\b/i.test(q);
+    if (!isPersonalRank && /(?:topper|top\s*\d+|best|highest|rank|leaderboard|class\s*rank)/.test(q) && !canAccess(userRole, "TOP_STUDENTS")) {
         return { allowed: false, reason: `${roleName} cannot view top students` };
     }
     if (/(?:search|find)\s*(?:user|student)/.test(q) && !canAccess(userRole, "SEARCH_USERS")) {

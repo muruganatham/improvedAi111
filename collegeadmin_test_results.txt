@@ -1,0 +1,65 @@
+=== College Admin User (User ID: 6818, Role: 3) TEST RESULTS (2026-03-08T10:40:49.195Z) ===
+
+Using: http://localhost:8081/api/agent/chat
+====================================================================
+
+Q1: how many students in my college?
+ERROR: fetch failed
+--------------------------------------------------
+
+Q2: show department wise student count
+ERROR: fetch failed
+--------------------------------------------------
+
+Q3: how are my students performing?
+ERROR: fetch failed
+--------------------------------------------------
+
+Q4: gender distribution of my students
+ERROR: fetch failed
+--------------------------------------------------
+
+Q5: how many trainers in my college?
+ERROR: fetch failed
+--------------------------------------------------
+
+Q6: how many courses allocated to my college?
+ERROR: fetch failed
+--------------------------------------------------
+
+Q7: top 5 students in my college
+ERROR: fetch failed
+--------------------------------------------------
+
+Q8: how many students in each batch?
+ERROR: fetch failed
+--------------------------------------------------
+
+Q9: who am I?
+ERROR: fetch failed
+--------------------------------------------------
+
+Q10: what is my college name?
+ERROR: fetch failed
+--------------------------------------------------
+
+Q11: how many courses are available?
+ERROR: fetch failed
+--------------------------------------------------
+
+Q12: how many colleges are there?
+ERROR: fetch failed
+--------------------------------------------------
+
+Q13: how many students in SREC?
+ERROR: fetch failed
+--------------------------------------------------
+
+Q14: compare SKCET vs SREC
+ERROR: fetch failed
+--------------------------------------------------
+
+Q15: top 10 students across all colleges
+ERROR: fetch failed
+--------------------------------------------------
+
