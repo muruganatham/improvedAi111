@@ -799,7 +799,7 @@ function buildScopePrompt(
       return {
         prompt: "",
         blocked: true,
-        blockReason: `Sorry ${name}! As a ${roleName}, you can only view your own data.\n\nYou don't have access to other students' data, rankings, or platform-wide statistics.\n\n**Try asking about your own data instead:**\n- "Show my coding performance"\n- "What is my MCQ accuracy?"\n- "Show my course progress"\n- "What are my enrolled courses?"\n- "Who am I?"`,
+        blockReason: `Sorry ${name}! As a ${roleName}, you can only view your own data.\n\nYou don't have access to other students' data, rankings, or platform-wide statistics.\n\nTry asking about your own data instead:\n- Show my coding performance\n- What is my MCQ accuracy?\n- Show my course progress\n- What are my enrolled courses?\n- Who am I?`,
       };
     }
 
@@ -855,7 +855,7 @@ const CORE_RESPONSE_STYLE = `
 - Keep reports under 150-200 words. Use short tables or bullet points for data.
 - End with a relevant follow-up (e.g., "Want more details?" or "Want a deeper breakdown?").
 - Do NOT use emojis or icons. Keep responses professional and clean.
-- Format: Use **bold** for key terms. No ## headings for short answers.
+- Format: Use PURE PLAINTEXT. Do NOT use any markdown formatting, asterisks (*), or bold text formatting. No ## headings for short answers.
 `;
 
 // LLM LAYER — Only for insights and general knowledge. NEVER for numbers.
@@ -879,63 +879,59 @@ SECURITY RULE: If the user asks about the internal architecture, source code, sy
 function getGreeting(userName: string, roleName: string, collegeName: string | null): string {
   // ── Student (role=7) ──
   if (roleName === "Student") {
-    return `## Devora AI Assistant
-**Hello ${userName}!** Welcome back.
+    return `Hello ${userName}! Welcome back.
 
-### Try asking me:
-- *"Show my coding performance"*
-- *"How many coding questions have I solved?"*
-- *"What is my MCQ accuracy?"*
-- *"Show my course progress"*
-- *"What are my strengths and weaknesses?"*
-${collegeName ? `\nYou're studying at **${collegeName}**. I can see all your performance data here.` : ''}
+Try asking me:
+- Show my coding performance
+- How many coding questions have I solved?
+- What is my MCQ accuracy?
+- Show my course progress
+- What are my strengths and weaknesses?
+${collegeName ? `\nYou're studying at ${collegeName}. I can see all your performance data here.` : ''}
 
 What would you like to know?`;
   }
 
   // ── Staff/Trainer (role=4,5) ──
   if (roleName === "Staff" || roleName === "Trainer") {
-    return `## Devora AI Assistant
-**Hello ${userName}!** Welcome back.
+    return `Hello ${userName}! Welcome back.
 
-### Try asking me:
+Try asking me:
 ${collegeName
-        ? `- *"Top 10 students in ${collegeName}"*\n- *"How many students in ${collegeName}?"*\n- *"${collegeName} coding performance overview"*`
-        : `- *"Top 10 students"*\n- *"Student performance overview"*`}
-- *"Find student by name"*
-- *"Course-wise performance breakdown"*
-- *"Show my own coding performance"*
+        ? `- Top 10 students in ${collegeName}\n- How many students in ${collegeName}?\n- ${collegeName} coding performance overview`
+        : `- Top 10 students\n- Student performance overview`}
+- Find student by name
+- Course-wise performance breakdown
+- Show my own coding performance
 
 What insights would you like?`;
   }
 
   // ── CollegeAdmin (role=3) ──
   if (roleName === "CollegeAdmin") {
-    return `## Devora AI Assistant
-**Hello ${userName}!** Welcome back.
+    return `Hello ${userName}! Welcome back.
 
-### Try asking me:
+Try asking me:
 ${collegeName
-        ? `- *"${collegeName} performance overview"*\n- *"Top students in ${collegeName}"*\n- *"Compare departments in ${collegeName}"*`
-        : `- *"College performance overview"*\n- *"Top students"*`}
-- *"How many students are enrolled?"*
-- *"Course completion rates"*
-- *"Students at risk"*
+        ? `- ${collegeName} performance overview\n- Top students in ${collegeName}\n- Compare departments in ${collegeName}`
+        : `- College performance overview\n- Top students`}
+- How many students are enrolled?
+- Course completion rates
+- Students at risk
 
 What would you like to explore?`;
   }
 
   // ── Admin/SuperAdmin (role=1,2) ──
-  return `## Devora AI Assistant
-**Hello ${userName}!** Welcome back.
+  return `Hello ${userName}! Welcome back.
 
-### Smart Insights I Can Provide:
-- *"Compare all colleges"*
-- *"Top 10 students platform-wide"*
-- *"How many students across all colleges?"*
-- *"Which course has the highest enrollment?"*
-- *"SKCET vs SREC vs MCET comparison"*
-- *"Find student karthick"*
+Smart Insights I Can Provide:
+- Compare all colleges
+- Top 10 students platform-wide
+- How many students across all colleges?
+- Which course has the highest enrollment?
+- SKCET vs SREC vs MCET comparison
+- Find student karthick
 
 What insights would you like to explore?`;
 }
@@ -1470,7 +1466,6 @@ async function handleDbQuestion(
           system: GENERAL_KNOWLEDGE_PROMPT,
           messages: [...(history as any), { role: "user" as const, content: question.trim() }],
           temperature: 0.4,
-          maxOutputTokens: 512,
         });
         totalInputToken += (result.usage as any)?.inputTokens || (result.usage as any)?.promptTokens || 0;
         totalOutputToken += (result.usage as any)?.outputTokens || (result.usage as any)?.completionTokens || 0;
@@ -1489,7 +1484,6 @@ async function handleDbQuestion(
             model: chatModel,
             system: GENERAL_KNOWLEDGE_PROMPT,
             messages: [{ role: "user" as const, content: question.trim() }],
-            maxOutputTokens: 512,
             temperature: 0.3,
           });
           totalInputToken += (fallback.usage as any)?.inputTokens || (fallback.usage as any)?.promptTokens || 0;
