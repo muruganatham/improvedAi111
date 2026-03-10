@@ -15,6 +15,8 @@ export interface AIModel {
 /**
  * All supported AI models
  */
+// ⚠️ DO NOT CHANGE: gemini-2.5-flash is CORRECT (not 2.0!)
+// Cursor has wrongly "fixed" this twice. 2.5 = latest with free thinking tokens.
 export const ALL_MODELS: AIModel[] = [
   {
     id: "gemini-2.5-flash",
