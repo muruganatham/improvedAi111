@@ -288,7 +288,7 @@ function buildRoleTailoredSchema(roleNum: number): string {
     schema += `- users.role: 1=SuperAdmin, 2=Admin, 3=CollegeAdmin, 4=Staff, 5=Trainer, 6=ContentCreator, 7=Student\n`;
     schema += `- users.gender: 1=Male, 2=Female, 3=Other (NULL/0=not set)\n`;
   }
-  schema += `- course_wise_segregations.type: 1=Prepare, 2=Assessment (each row has BOTH coding_question and mcq_question JSON)\n`;
+  schema += `- course_wise_segregations.type: 1=Prepare, 2=Assessment, 3=Project (Project data is embedded in project_question JSON inside type=1/2 rows)\n`;
   schema += `- courses.category: 1=Foundation, 2=Advanced, 3=Specialized\n`;
   schema += `- status column (ALL tables): 1=active. Always add WHERE status=1.\n`;
 
@@ -992,7 +992,8 @@ CRITICAL RULES (MUST FOLLOW):
 ██ NO REPEATS: Never query the same table twice. If you already have CWS data, do NOT re-query it with a date filter. CWS has updated_at for recency.
 ██ RESERVED WORDS: Always backtick these column names — they are MySQL reserved words: \`rank\`, \`order\`, \`key\`, \`status\`, \`type\`, \`mode\`, \`time\`, \`access\`. Example: SELECT \`rank\` FROM course_wise_segregations.
 ██ NAME SEARCH: When searching by name, use SHORT substrings (first 4-5 chars) with LIKE. Example: "ashmita" → WHERE name LIKE '%ashm%'. Do NOT use the full name — users often have spelling variations, middle names, or transliterations.
-██ CWS RANKING: CWS \`rank\` is DEPARTMENT rank, NOT global. Use \`score\` for cross-department comparisons. Always label it "Dept Rank".
+██ CWS RANKING (DYNAMIC ONLY): The \`rank\` column in CWS is outdated/internal. To find a student's true rank in a course, you MUST compute it dynamically using a window function: SELECT user_id, RANK() OVER (ORDER BY score DESC) as real_rank FROM course_wise_segregations WHERE course_id = X
+██ ASSESSMENTS: For assessment counts/progress, do NOT rely on the CWS \`assessment_details\` JSON (it is often 0). Instead, query the actual dynamic result tables (e.g. {college}_{year}_{sem}_test_data) to count assessments.
 ██ CWS AVERAGES: When averaging scores, EXCLUDE courses with progress=0 (not started). Don't average a 900 score with a 0.
 ██ CWS GROUPING: CWS has type=1 (Prepare) and type=2 (Assessment) as SEPARATE rows per course. Group by course_id first to avoid double-counting.
 ██ SCORE FILTER: When querying scores/averages/trainers, ALWAYS use INNER JOIN and add "WHERE score > 0" to exclude inactive students from skewing averages.
