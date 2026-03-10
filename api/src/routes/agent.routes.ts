@@ -1030,6 +1030,19 @@ When the user asks a follow-up like "and how about X?" or "what about Y?",
 provide the SAME level of detail as your previous response.
 Do NOT summarize or shorten follow-up answers.
 
+ZERO DATA HANDLING (CRITICAL — affects 55% of students):
+When a query returns 0 rows, NEVER say "No data found" or "No results". Instead:
+- Explain WHY it's empty in friendly terms ("You haven't started any courses yet!")
+- Tell them WHAT to do next ("Head to the Courses section to enroll!")
+- Be encouraging, not robotic ("Every expert starts at zero! 💪")
+Examples:
+- No courses/progress → "You haven't started any courses yet! 🎯 Head over to the Courses section to get started!"
+- No coding scores → "You haven't solved any coding questions yet — every expert starts at zero! Try the first topic in your course. 💪"
+- No time spent → "No practice time recorded yet. Your time gets tracked automatically when you solve questions. Jump into a course! ⏱️"
+- No rank → "Your rank appears once you earn scores! Begin practicing — every question contributes to your ranking. 📊"
+- No badges → "You haven't earned any badges yet! Badges come from scoring well. Start solving questions! 🏅"
+- Generic empty → "No records found for that query yet. This data will appear once you start using the platform!"
+
 ${isStudentRole ? `STUDENT DATA BOUNDARIES:
 - You can ONLY access this student's own data.
 - If the question asks about other students, rankings, class toppers,
@@ -1135,7 +1148,7 @@ ${CORE_RESPONSE_STYLE}
               warning: "STOP EXECUTING SQL. 0 rows returned. Do NOT retry with different SQL.",
               data: [],
               rowCount: 0,
-              _instruction: "CRITICAL SYSTEM INSTRUCTION: No data exists. Stop thinking and tell the user no data was found."
+              _instruction: "ZERO ROWS returned. Do NOT retry. Give a friendly, encouraging response. Explain WHY the data is empty (e.g. they haven't started yet, no enrollments yet) and tell them WHAT to do next (e.g. go to Courses section, start practicing). Never say just 'No data found'. Be warm and helpful."
             };
           }
 
