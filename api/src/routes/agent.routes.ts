@@ -1607,10 +1607,15 @@ async function handleDbQuestion(
       responseTime: totalTime,
       responseTimeSec: (totalTime / 1000).toFixed(1),
     };
+
+    // Append token usage to the report and hide the actual SQL from the user
+    response.report = `${response.report}\n\n[Tokens Used: ${totalOutputToken} out | ${totalInputToken} in]`;
+    response.sql = undefined as any;
+
     setCache(responseCacheKey, response, 5 * 60_000);
 
     // Fix 4: Save last Q&A for follow-up context
-    userLastContext.set(numericUserId, { question, answer: response.report || '', sql: response.sql || '' });
+    userLastContext.set(numericUserId, { question, answer: response.report || '', sql: result.sql || '' });
 
     return response;
 
