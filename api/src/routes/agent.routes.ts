@@ -995,6 +995,7 @@ CRITICAL RULES (MUST FOLLOW):
 ██ CWS RANKING (DYNAMIC ONLY): The \`rank\` column in CWS is outdated/internal. To find a student's true rank in a course, you MUST compute it dynamically using a window function: SELECT user_id, RANK() OVER (ORDER BY score DESC) as real_rank FROM course_wise_segregations WHERE course_id = X
 ██ ASSESSMENTS: For assessment counts/progress, do NOT rely on the CWS \`assessment_details\` JSON (it is often 0). Instead, query the actual dynamic result tables (e.g. {college}_{year}_{sem}_test_data) to count assessments.
 ██ CWS AVERAGES: When averaging scores, EXCLUDE courses with progress=0 (not started). Don't average a 900 score with a 0.
+██ CWS PROGRESS (UNRELIABLE): The CWS \`progress\` column may show non-zero values (e.g. 50%) even when obtain_score=0. For accurate progress, compute from JSON: SUM(coding_question->>'$.obtain_score' + mcq_question->>'$.obtain_score') / NULLIF(SUM(coding_question->>'$.total_score' + mcq_question->>'$.total_score'), 0) * 100. When showing "worst" or "lowest" students, use \`score\` column (not progress) and add WHERE score > 0 to exclude zero-activity students.
 ██ CWS GROUPING: CWS has type=1 (Prepare) and type=2 (Assessment) as SEPARATE rows per course. Group by course_id first to avoid double-counting.
 ██ SCORE FILTER: When querying scores/averages/trainers, ALWAYS use INNER JOIN and add "WHERE score > 0" to exclude inactive students from skewing averages.
 ██ GROUPING NAMES: When using GROUP BY with student names, ALWAYS group by users.id AND users.name to prevent merging different students with the exact same name.
@@ -1213,10 +1214,19 @@ ${CORE_RESPONSE_STYLE}
   const stepsUsed = result.steps?.length ?? 1;
   let report = result.text?.trim() || "";
 
-  // Retrieve the global token counts extracted directly from DeepSeek HTTP payloads
-  // Retrieve global token usage safely from ai sdk object
-  let inputToken = (result.usage as any)?.promptTokens || 0;
-  let outputToken = (result.usage as any)?.completionTokens || 0;
+  // Retrieve global token usage — try top-level first, then aggregate from steps
+  // When generateText uses tools + stopWhen, top-level usage may be 0 (tokens tracked per-step)
+  let inputToken = (result as any).usage?.promptTokens || (result as any).usage?.inputTokens || 0;
+  let outputToken = (result as any).usage?.completionTokens || (result as any).usage?.outputTokens || 0;
+
+  // Fallback: aggregate from individual steps if top-level is 0
+  if (inputToken === 0 && outputToken === 0 && result.steps) {
+    for (const step of result.steps as any[]) {
+      inputToken += step.usage?.promptTokens || step.usage?.inputTokens || 0;
+      outputToken += step.usage?.completionTokens || step.usage?.outputTokens || 0;
+    }
+  }
+  logger.info(`[token-tracking] steps=${result.steps?.length}, in=${inputToken}, out=${outputToken}`);
 
   // Fix F: If we hit max steps and got garbage output, try to summarize collected data
   if (stepsUsed >= 5 && (!report || report.toLowerCase().includes('let me fix') || report.toLowerCase().includes('let me try'))) {
