@@ -19,7 +19,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { databaseConnectionService } from "../services/database-connection.service";
 import { getAllAgentMeta } from "../agents";
 import { loggers } from "../logging";
-import { ROLES, getRoleName, getSQLScope, checkRestrictedAccess, needsUserIdFilter } from "../agent-lib/role-access";
+import { ROLES, getRoleName, getSQLScope, checkRestrictedAccess, needsUserIdFilter, isCollegeScoped } from "../agent-lib/role-access";
 import { classifyQuestion } from "../agent-lib/question-classifier";
 
 const logger = loggers.agent();
@@ -818,9 +818,12 @@ function buildScopePrompt(
       if (roleNum > 2 && roleNum < 6) {
         prompt += `SCOPE: COLLEGE-SCOPED - ${roleName}, limited to their college institution.\n`;
         prompt += `RULES:\n`;
-        prompt += `- ALWAYS add "${sqlScope.whereClause}" to all cross-user queries to stay within your college.\n`;
+        prompt += `- You MUST restrict all user data to college_id = ${collegeId}.\n`;
+        prompt += `- TIER A Tables (Has college_id column): course_wise_segregations, user_academics, batches, course_academic_maps, feedback_*, etc. Append WHERE college_id = ${collegeId} directly.\n`;
+        prompt += `- TIER B Tables (No college_id column): ALL 90+ dynamic event tables (e.g., coding_result, mcq_result, test_data), user_assignments, certificates. To filter these, you MUST JOIN user_academics (e.g., JOIN user_academics ua ON main_table.user_id = ua.user_id) and append WHERE ua.college_id = ${collegeId}.\n`;
+        prompt += `- TIER C Tables (Public catalog): courses, topics, tests, practice_modules. No college filter needed.\n`;
         prompt += `- Can see students/trainers in their college, but NOT other colleges.\n`;
-        prompt += `- Cross-college comparisons are NOT allowed.\n`;
+        prompt += `- Cross-college comparisons are NOT allowed. If requested, strictly refuse, politely.\n`;
         prompt += `- If they ask about "my students" or "my college", use college_id = ${collegeId}.\n`;
       }
     }
@@ -945,7 +948,8 @@ async function handleWithTools(
   _options: { version: 'v1' | 'v2' },
   scopePrompt: string,
   scope: string,
-  profileName: string = "there"
+  profileName: string = "there",
+  collegeId: number | null = null
 ) {
   const chatModel = makeModel();
   const roleName = getRoleName(roleNum);
@@ -1127,15 +1131,23 @@ ${CORE_RESPONSE_STYLE}
 
           // FIX #1 & #2: Intelligently determine if tables require user_id based on TABLE_SCOPE_MAP
           // Public catalog tables (courses, colleges, etc.) are fine without user_id.
-          if (isStudentRole) {
-            const tablesInQuery = cleaned.match(/(?:from|join)\s+[`]?([a-zA-Z0-9_]+)[`]?/gi)
-              ?.map((m: string) => m.replace(/(?:from|join)\s+[`]?/i, '').replace(/[`]?$/, '').toLowerCase())
-              || [];
+          const tablesInQuery = cleaned.match(/(?:from|join)\s+[`]?([a-zA-Z0-9_]+)[`]?/gi)
+            ?.map((m: string) => m.replace(/(?:from|join)\s+[`]?/i, '').replace(/[`]?$/, '').toLowerCase())
+            || [];
 
-            const needsUserId = tablesInQuery.some(needsUserIdFilter);
+          const requiresUserFilter = tablesInQuery.some(needsUserIdFilter);
 
-            if (needsUserId && !userIdRegex.test(cleaned)) {
+          if (isStudentRole && requiresUserFilter) {
+            if (!userIdRegex.test(cleaned)) {
               return { error: `Security: Queries on personal data tables must filter by user_id = ${userId}` };
+            }
+          }
+
+          if (isCollegeScoped(roleNum) && requiresUserFilter) {
+            // Must contain some form of college_id filtering, e.g. college_id = 4 or college_id IN (4)
+            const collegeIdRegex = new RegExp(`college_id\\s*(=|IN)\\s*\\(?\\s*['"]?${collegeId}['"]?\\s*\\)?`, 'i');
+            if (!collegeIdRegex.test(cleaned)) {
+              return { error: `Security: Queries by College Admins MUST include a 'college_id = ${collegeId}' filter. If the table lacks this column, you MUST JOIN the user_academics table (e.g., JOIN user_academics ua ON main_table.user_id = ua.user_id WHERE ua.college_id = ${collegeId}).` };
             }
           }
 
@@ -1587,7 +1599,7 @@ async function handleDbQuestion(
 
     // STEP 5: LLM with tools — the brain does the work
     logger.info(`LLM with tools (${options.version})`, { userId, role: roleNum, scope });
-    const result = await handleWithTools(question, numericUserId, roleNum, history, options, scopeResult.prompt, scope, profile?.name || "there");
+    const result = await handleWithTools(question, numericUserId, roleNum, history, options, scopeResult.prompt, scope, profile?.name || "there", collegeId);
     const totalTime = Date.now() - startTime;
 
     totalInputToken += result.inputToken || 0;
