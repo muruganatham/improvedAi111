@@ -799,7 +799,7 @@ function buildScopePrompt(
       return {
         prompt: "",
         blocked: true,
-        blockReason: `Sorry ${name}! As a ${roleName}, you can only view your own data.\n\nYou don't have access to other students' data, rankings, or platform-wide statistics.\n\n**Try asking about your own data instead:**\n- "Show my coding performance"\n- "What is my MCQ accuracy?"\n- "Show my course progress"\n- "Who am I?"`,
+        blockReason: `Sorry ${name}! As a ${roleName}, you can only view your own data.\n\nYou don't have access to other students' data, rankings, or platform-wide statistics.\n\n**Try asking about your own data instead:**\n- "Show my coding performance"\n- "What is my MCQ accuracy?"\n- "Show my course progress"\n- "What are my enrolled courses?"\n- "Who am I?"`,
       };
     }
 
@@ -945,6 +945,7 @@ async function handleWithTools(
   _options: { version: 'v1' | 'v2' },
   scopePrompt: string,
   scope: string,
+  profileName: string = "there"
 ) {
   const chatModel = makeModel();
   const roleName = getRoleName(roleNum);
@@ -1032,9 +1033,17 @@ Do NOT summarize or shorten follow-up answers.
 ${isStudentRole ? `STUDENT DATA BOUNDARIES:
 - You can ONLY access this student's own data.
 - If the question asks about other students, rankings, class toppers,
-  or any cross-user data, respond:
-  "I can only show your personal data. Try asking about your own
-  scores, progress, or course details."
+  or any cross-user data, respond EXACTLY with this message (no changes):
+  "Sorry ${profileName}! As a Student, you can only view your own data.
+
+You don't have access to other students' data, rankings, or platform-wide statistics.
+
+**Try asking about your own data instead:**
+- \"Show my coding performance\"
+- \"What is my MCQ accuracy?\"
+- \"Show my course progress\"
+- \"What are my enrolled courses?\"
+- \"Who am I?\""
 - Do NOT show technical error messages. Give friendly responses.` : `ADMIN DATA BOUNDARIES:
 - You have FULL ACCESS to all cross-user data, rankings, analytics, and platform-wide queries.`}
 
@@ -1491,7 +1500,7 @@ async function handleDbQuestion(
       if (!restrictedCheck.allowed) {
         const elapsed = Date.now() - startTime;
         const response = {
-          report: `Sorry! ${restrictedCheck.reason}. Try asking about your own data.`,
+          report: `Sorry ${profile?.name || 'there'}! As a ${roleName}, you can only view your own data.\n\nYou don't have access to other students' data, rankings, or platform-wide statistics.\n\n**Try asking about your own data instead:**\n- "Show my coding performance"\n- "What is my MCQ accuracy?"\n- "Show my course progress"\n- "What are my enrolled courses?"\n- "Who am I?"`,
           sql: null, steps: 0,
           inputToken: totalInputToken, outputToken: totalOutputToken,
           responseTime: elapsed,
@@ -1565,7 +1574,7 @@ async function handleDbQuestion(
 
     // STEP 5: LLM with tools — the brain does the work
     logger.info(`LLM with tools (${options.version})`, { userId, role: roleNum, scope });
-    const result = await handleWithTools(question, numericUserId, roleNum, history, options, scopeResult.prompt, scope);
+    const result = await handleWithTools(question, numericUserId, roleNum, history, options, scopeResult.prompt, scope, profile?.name || "there");
     const totalTime = Date.now() - startTime;
 
     totalInputToken += result.inputToken || 0;
