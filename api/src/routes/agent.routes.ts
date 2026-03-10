@@ -67,7 +67,8 @@ function makeDeepSeekModel(modelName: "deepseek-chat" | "deepseek-reasoner" = "d
 */
 
 
-// --- Option B: Gemini 2.0 Flash (ACTIVE) ---
+// --- Option B: Gemini 2.5 Flash (ACTIVE) ---
+// ⚠️ DO NOT CHANGE: gemini-2.5-flash is CORRECT (not 2.0!). 2.5 has free thinking tokens.
 // Patch: Gemini API requires "type":"OBJECT" on functionDeclaration parameters
 // but @ai-sdk/google omits it. Same class of bug as DeepSeek's patchedFetch.
 const patchedGoogleFetch = async (url: string, options: any) => {
@@ -96,8 +97,9 @@ const google = createGoogleGenerativeAI({
   fetch: patchedGoogleFetch as any,
 });
 
-function makeModel(modelName: string = "gemini") {
-  return google('gemini-2.5-flash'); // Restored to Gemini 2.5 Flash (Superior Reasoning/Security)
+// ⚠️ DO NOT CHANGE: gemini-2.5-flash is the CORRECT model. Do NOT downgrade to 2.0.
+function makeModel() {
+  return google('gemini-2.5-flash');
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -355,7 +357,7 @@ IDENTITY / "who am I?" / profile queries:
     ua.academic_info, ua.personal_info,
     co.course_name,
     CASE cws.type WHEN 1 THEN 'Prepare' WHEN 2 THEN 'Assessment' END as mode,
-    cws.progress, cws.score, cws.\`rank\` as dept_rank,
+    cws.score,
     ROUND(cws.time_spend/3600,1) as hours,
     JSON_EXTRACT(cws.coding_question,'$.solved_question') as coding_solved,
     JSON_EXTRACT(cws.coding_question,'$.total_question') as coding_total,
@@ -436,8 +438,7 @@ COURSE-WISE PERFORMANCE TABLE:
   Time Spend = SUM(time_spend) across both types, displayed as Xh Ym
     Use FLOOR for hours and minutes (portal uses floor, not round).
 
-  Rank = CWS.\`rank\` column (department rank). \`rank\` is a reserved word — backtick it!
-    Also available: performance_rank for performance-based ranking.
+  Rank = COMPUTE DYNAMICALLY using RANK() OVER (ORDER BY SUM(cws.score) DESC). Do NOT use cws.\`rank\` column (it is outdated/internal).
 
   EXAMPLE SQL for course-wise table:
     SELECT
@@ -449,7 +450,7 @@ COURSE-WISE PERFORMANCE TABLE:
          SUM(JSON_EXTRACT(cws.mcq_question,'$.total_score'))) * 100, 2
       ) AS progress_pct,
       CONCAT(FLOOR(SUM(cws.time_spend)/3600), 'h ', FLOOR(MOD(SUM(cws.time_spend),3600)/60), 'm') AS time_display,
-      MAX(cws.\`rank\`) AS dept_rank,
+      -- rank must be computed via RANK() OVER, not from cws.rank column
       SUM(cws.score) AS total_score
     FROM course_wise_segregations cws
     JOIN courses c ON cws.course_id = c.id
@@ -775,7 +776,7 @@ function buildScopePrompt(
     prompt += `- For \"course status/progress\": query CWS + courses table. Format each course as:\n`;
     prompt += `  [Course Name]: X/Y items completed (Z%)\n`;
     prompt += `  Get X from coding_question JSON (attend_question + solved_question) and Y from (total_question).\n`;
-    prompt += `  Use progress column for the percentage. List ALL enrolled courses, sorted by progress DESC.\n`;
+    prompt += `  Compute progress from JSON: SUM(obtain_score)/NULLIF(SUM(total_score),0)*100. Do NOT use the CWS progress column. List ALL enrolled courses, sorted by progress DESC.\n`;
 
     // FIX 1: Pre-inject exact active database tables related to this student so LLM stops running SHOW TABLES
     if (collegeDynamicTables && collegeDynamicTables.length > 0) {
@@ -1469,8 +1470,8 @@ async function handleDbQuestion(
 
   // ── GENERAL KNOWLEDGE (no DB) ──
   if (route === "general") {
-    const reasonerModel = makeModel("gemini-reasoning"); // Transitioned from deepseek-reasoner
-    const chatModel = makeModel("gemini-chat"); // Transitioned from deepseek-chat
+    const reasonerModel = makeModel();
+    const chatModel = makeModel();
     try {
       let reportText = "";
 
