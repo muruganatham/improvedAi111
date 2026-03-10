@@ -71,7 +71,7 @@ function makeDeepSeekModel(modelName: "deepseek-chat" | "deepseek-reasoner" = "d
 // ⚠️ DO NOT CHANGE: gemini-2.5-flash is CORRECT (not 2.0!). 2.5 has free thinking tokens.
 // Patch: Gemini API requires "type":"OBJECT" on functionDeclaration parameters
 // but @ai-sdk/google omits it. Same class of bug as DeepSeek's patchedFetch.
-const patchedGoogleFetch = async (url: string, options: any) => {
+async function patchedGoogleFetch(url: string, options: any) {
   if (options?.body) {
     try {
       const body = JSON.parse(options.body);
@@ -90,7 +90,7 @@ const patchedGoogleFetch = async (url: string, options: any) => {
     } catch { }
   }
   return fetch(url, options);
-};
+}
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_AI_API_KEY,
@@ -129,6 +129,7 @@ agentRoutes.use("/chat", async (c, next) => {
   await next();
 });
 
+
 const dataCache = new Map<string, { result: any; expiry: number }>();
 
 function getCached(key: string): any | null {
@@ -149,10 +150,6 @@ setInterval(() => {
     if (entry.expiry < now) dataCache.delete(key);
   }
 }, 10 * 60_000);
-
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// DATA LAYER — Deterministic data fetching. LLM never touches the DB.
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 async function runQuery(sql: string): Promise<{ rows: any[]; sql: string; error?: string }> {
   const res = await databaseConnectionService.executeQuery(dbMock, sql, { databaseName: dbName });
@@ -224,7 +221,6 @@ async function loadSchemaCache() {
           newSampleCache[table] = formatted.join('\n    ');
         }
       } catch {
-        // Skip tables that fail (e.g., missing status column)
         try {
           const res = await runQuery(`SELECT * FROM \`${table}\` LIMIT 3`);
           if (res.rows && res.rows.length > 0) {
