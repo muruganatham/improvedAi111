@@ -996,6 +996,7 @@ CRITICAL RULES (MUST FOLLOW):
 ██ CWS AVERAGES: When averaging scores, EXCLUDE courses with progress=0 (not started). Don't average a 900 score with a 0.
 ██ CWS GROUPING: CWS has type=1 (Prepare) and type=2 (Assessment) as SEPARATE rows per course. Group by course_id first to avoid double-counting.
 ██ SCORE FILTER: When querying scores/averages/trainers, ALWAYS use INNER JOIN and add "WHERE score > 0" to exclude inactive students from skewing averages.
+██ GROUPING NAMES: When using GROUP BY with student names, ALWAYS group by users.id AND users.name to prevent merging different students with the exact same name.
 RULES:
 1. You already have the full schema above — go DIRECTLY to run_sql. Only use list_tables/describe_table for tables NOT in the schema.
 2. Only SELECT queries allowed
@@ -1099,8 +1100,8 @@ ${CORE_RESPONSE_STYLE}
     } as any),
 
     run_sql: tool({
-      description: "Execute a SELECT query. Returns up to 200 rows.",
-      parameters: z.object({ query: z.string() }),
+      description: "Execute a SELECT query against the database. Returns up to 200 rows.",
+      parameters: z.object({ query: z.string().describe("The SQL SELECT query string to execute. Example: SELECT * FROM users LIMIT 10") }),
       execute: async (args: any) => {
         try {
           const query = args?.query || args?.sql || (typeof args === 'string' ? args : '');
@@ -1440,6 +1441,7 @@ async function handleDbQuestion(
   }
 
   // ── HARD BLOCK: restricted scope for students on general route ──
+  // Fix for Bug 3 (T1-Q7): Only block students (Role 7), Admins (1, 2) should be allowed to ask architecture questions.
   if (route === "general" && scope === "restricted" && roleNum === 7) {
     const elapsed = Date.now() - startTime;
     const response = {
