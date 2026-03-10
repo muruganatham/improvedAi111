@@ -1,9 +1,9 @@
 /**
  * AI Model Definitions
- * Only DeepSeek is supported.
+ * Primary Provider: Google (Gemini)
  */
 
-export type AIProvider = "deepseek";
+export type AIProvider = "google";
 
 export interface AIModel {
   id: string;
@@ -17,11 +17,19 @@ export interface AIModel {
  */
 export const ALL_MODELS: AIModel[] = [
   {
+    id: "gemini-2.5-flash",
+    provider: "google",
+    name: "Gemini 2.5 Flash",
+    description: "Ultra-fast, stable reasoning and database analysis model",
+  },
+  /*
+  {
     id: "deepseek-chat",
     provider: "deepseek",
     name: "DeepSeek Chat",
     description: "Powerful and cost-effective chat model",
   },
+  */
 ];
 
 /**

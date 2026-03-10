@@ -9,6 +9,7 @@ import { loggers } from "../logging";
 
 const logger = loggers.agent();
 
+/*
 const patchedFetch = async (url: string, options: any) => {
   if (options?.body) {
     try {
@@ -22,7 +23,7 @@ const patchedFetch = async (url: string, options: any) => {
         });
         options.body = JSON.stringify(body);
       }
-    } catch { /* not JSON */ }
+    } catch { }
   }
   return fetch(url, options);
 };
@@ -31,6 +32,12 @@ const deepseekProvider = createOpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY,
   baseURL: "https://api.deepseek.com",
   fetch: patchedFetch as any,
+});
+*/
+
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+const google = createGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_AI_API_KEY,
 });
 
 const TITLE_SYSTEM_PROMPT = `You are a title generator. Generate a concise 3-8 word title for a chat conversation.
@@ -71,7 +78,7 @@ export const generateChatTitle = async (
 ): Promise<string> => {
   try {
     const { text } = await generateText({
-      model: deepseekProvider.chat("deepseek-chat"),
+      model: google("gemini-2.5-flash"), // Transitioned from deepseek-chat
       system: TITLE_SYSTEM_PROMPT,
       prompt: userMessageContent.substring(0, 2000), // Limit input length
     });

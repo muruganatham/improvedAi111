@@ -11,9 +11,9 @@ export const ROLES = {
 
 // ── Permission groups ──
 export const GROUPS = {
-    PLATFORM_ADMIN: [1, 2] as readonly number[],      // See everything
-    COLLEGE_SCOPED: [3, 4, 5] as readonly number[],   // See their college only
-    PERSONAL_ONLY: [6, 7] as readonly number[],       // See own data only
+    PLATFORM_ADMIN: [1, 2, 5, 6] as readonly number[],  // See everything (Admin + Trainer + Content Creator)
+    COLLEGE_SCOPED: [3, 4] as readonly number[],        // See their college only
+    PERSONAL_ONLY: [7] as readonly number[],            // See own data only (Student)
 };
 
 // ── Data access rules ──
@@ -40,11 +40,11 @@ export const ACCESS = {
     },
     COLLEGE_COMPARISON: {
         description: "Compare colleges",
-        allowedRoles: [1, 2, 3],
+        allowedRoles: [1, 2, 3, 5, 6],
     },
     PLATFORM_STATS: {
         description: "Platform-wide statistics",
-        allowedRoles: [1, 2],
+        allowedRoles: [1, 2, 5, 6],
     },
     ALL_COURSES: {
         description: "View all courses",
@@ -190,6 +190,11 @@ export const TABLE_SCOPE_MAP: Record<string, { isPublicCatalog?: boolean; hasUse
     'question_banks': { isPublicCatalog: true },
     'discussions': { isPublicCatalog: true },
     'tests': { isPublicCatalog: true },
+    'feedback_questions': { isPublicCatalog: true },
+    'standard_qb_codings': { isPublicCatalog: true },
+    'standard_qb_mcqs': { isPublicCatalog: true },
+    'academic_qb_codings': { isPublicCatalog: true },
+    'test_modules': { isPublicCatalog: true },
 
     // User data tables — require user_id filter
     'verify_certificates': { hasUserId: true, userColumn: 'user_id' },

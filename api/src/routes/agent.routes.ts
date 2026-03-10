@@ -13,8 +13,9 @@
 import { Hono } from "hono";
 import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
-import { createOpenAI } from "@ai-sdk/openai";
+// import { createOpenAI } from "@ai-sdk/openai"; // DeepSeek backup
 import { getAvailableModels } from "../agent-lib/ai-models";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { databaseConnectionService } from "../services/database-connection.service";
 import { getAllAgentMeta } from "../agents";
 import { loggers } from "../logging";
@@ -24,33 +25,21 @@ import { classifyQuestion } from "../agent-lib/question-classifier";
 const logger = loggers.agent();
 export const agentRoutes = new Hono();
 
-// Global token tracker for the current request
-export const deepseekUsages = new Map<string, { input: number, output: number, timestamp: number }>();
-
 // Fix 4: Follow-up memory — stores last Q&A per user for context awareness
 const userLastContext = new Map<number, { question: string, answer: string, sql: string }>();
-
-// Garbage collector for token tracker (cleans up dangling pointers from DeepSeek API timeouts)
-setInterval(() => {
-  const cutoff = Date.now() - 300_000; // 5 mins
-  for (const [key, val] of deepseekUsages.entries()) {
-    if (val.timestamp < cutoff) deepseekUsages.delete(key);
-  }
-}, 60_000);
 
 const dbName = process.env.DB_NAME || "coderv4";
 const dbMock = { _id: "000000000000000000000002", type: "mysql" } as any;
 
-// ── DeepSeek model factory ────────────────────────────────────────────────────
+// --- Option A: DeepSeek (COMMENTED — keeping as backup for testing) ---
+/*
 function makeDeepSeekModel(modelName: "deepseek-chat" | "deepseek-reasoner" = "deepseek-chat") {
   const patchedFetch = async (url: string, options: any) => {
     let reqId = "";
-    // Intercept tracking ID from our custom header
     if (options?.headers && options.headers["x-ds-tracker"]) {
       reqId = options.headers["x-ds-tracker"];
-      delete options.headers["x-ds-tracker"]; // clean up before sending to real API
+      delete options.headers["x-ds-tracker"];
     }
-
     if (options?.body) {
       try {
         const body = JSON.parse(options.body);
@@ -63,28 +52,52 @@ function makeDeepSeekModel(modelName: "deepseek-chat" | "deepseek-reasoner" = "d
           });
           options.body = JSON.stringify(body);
         }
-      } catch { /* not JSON */ }
+      } catch { }
     }
     const response = await fetch(url, options);
-    const cloned = response.clone();
-    cloned.json().then(data => {
-      if (data?.usage && reqId) {
-        if (!deepseekUsages.has(reqId)) deepseekUsages.set(reqId, { input: 0, output: 0, timestamp: Date.now() });
-        const current = deepseekUsages.get(reqId)!;
-        current.input += data.usage.prompt_tokens || 0;
-        current.output += data.usage.completion_tokens || 0;
-        current.timestamp = Date.now();
-      }
-    }).catch(() => { });
     return response;
   };
-
   const provider = createOpenAI({
     apiKey: process.env.DEEPSEEK_API_KEY,
     baseURL: "https://api.deepseek.com",
     fetch: patchedFetch as any,
   });
   return provider.chat(modelName);
+}
+*/
+
+
+// --- Option B: Gemini 2.0 Flash (ACTIVE) ---
+// Patch: Gemini API requires "type":"OBJECT" on functionDeclaration parameters
+// but @ai-sdk/google omits it. Same class of bug as DeepSeek's patchedFetch.
+const patchedGoogleFetch = async (url: string, options: any) => {
+  if (options?.body) {
+    try {
+      const body = JSON.parse(options.body);
+      if (Array.isArray(body.tools)) {
+        for (const toolGroup of body.tools) {
+          if (Array.isArray(toolGroup.functionDeclarations)) {
+            for (const fn of toolGroup.functionDeclarations) {
+              if (fn.parameters && !fn.parameters.type) {
+                fn.parameters.type = 'OBJECT';
+              }
+            }
+          }
+        }
+        options.body = JSON.stringify(body);
+      }
+    } catch { }
+  }
+  return fetch(url, options);
+};
+
+const google = createGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_AI_API_KEY,
+  fetch: patchedGoogleFetch as any,
+});
+
+function makeModel(modelName: string = "gemini") {
+  return google('gemini-2.5-flash'); // Restored to Gemini 2.5 Flash (Superior Reasoning/Security)
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -113,10 +126,6 @@ agentRoutes.use("/chat", async (c, next) => {
   } catch { /* ignore */ }
   await next();
 });
-
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// CACHE — 5 min for user data, 30 min for table lists
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 const dataCache = new Map<string, { result: any; expiry: number }>();
 
@@ -153,6 +162,7 @@ async function runQuery(sql: string): Promise<{ rows: any[]; sql: string; error?
 // Eliminates 3-4 tool steps per query (no more list_tables + describe_table)
 // ═══════════════════════════════════════════════════════════════
 let cachedTableSchemas: Record<string, string> = {};
+let cachedSampleData: Record<string, string> = {};  // NEW: table → formatted sample rows
 
 const SCHEMA_TABLES = [
   'users', 'user_academics', 'colleges', 'departments',
@@ -168,18 +178,71 @@ const SCHEMA_TABLES = [
   'tests', 'course_topic_maps'
 ];
 
+// Tables that benefit from sample data exploration (enum values, JSON structures)
+const SAMPLE_DATA_TABLES = [
+  'users',                              // role, gender, status enums
+  'courses',                            // category, status
+  'colleges',                           // college_name, short_name
+  'course_wise_segregations',           // type, JSON columns, score
+  'course_academic_maps',               // type, db prefix, allocation_id
+  'user_academics',                     // college_id, department_id
+  'user_course_enrollments',            // status
+  'course_staff_trainer_allocations',   // role patterns
+];
+
 async function loadSchemaCache() {
   try {
     const newCache: Record<string, string> = {};
-    for (const table of SCHEMA_TABLES) {
+    const newSampleCache: Record<string, string> = {};
+    for (const key in schemaHintCache) delete schemaHintCache[key]; // BUG 3: Clear schema hint cache
+
+    // 1. Fetch table schemas (DESCRIBE) — all 26 tables
+    await Promise.all(SCHEMA_TABLES.map(async (table) => {
       const res = await runQuery(`DESCRIBE \`${table}\``);
       if (res.rows && res.rows.length > 0) {
-        let columns = res.rows.map((r: any) => r.Field).join(', ');
-        newCache[table] = columns;
+        newCache[table] = res.rows.map((r: any) => r.Field).join(', ');
       }
-    }
+    })); // BUG 4: Parallelize 26 DESCRIBE queries
+
+    // 2. NEW: Fetch sample data from key tables (3 rows each)
+    await Promise.all(SAMPLE_DATA_TABLES.map(async (table) => {
+      try {
+        const res = await runQuery(`SELECT * FROM \`${table}\` WHERE status = 1 LIMIT 3`);
+        if (res.rows && res.rows.length > 0) {
+          // Format each row compactly, truncating long values
+          const formatted = res.rows.map((row: any) => {
+            const entries = Object.entries(row).map(([k, v]) => {
+              let val = v === null ? 'NULL' : String(v);
+              // Truncate long strings (JSON, text) to save tokens
+              if (val.length > 80) val = val.substring(0, 77) + '...';
+              return `${k}:${val}`;
+            });
+            return `{${entries.join(', ')}}`;
+          });
+          newSampleCache[table] = formatted.join('\n    ');
+        }
+      } catch {
+        // Skip tables that fail (e.g., missing status column)
+        try {
+          const res = await runQuery(`SELECT * FROM \`${table}\` LIMIT 3`);
+          if (res.rows && res.rows.length > 0) {
+            const formatted = res.rows.map((row: any) => {
+              const entries = Object.entries(row).map(([k, v]) => {
+                let val = v === null ? 'NULL' : String(v);
+                if (val.length > 80) val = val.substring(0, 77) + '...';
+                return `${k}:${val}`;
+              });
+              return `{${entries.join(', ')}}`;
+            });
+            newSampleCache[table] = formatted.join('\n    ');
+          }
+        } catch { /* silently skip */ }
+      }
+    }));
+
     cachedTableSchemas = newCache;
-    logger.info(`[schema-cache] Cached ${Object.keys(cachedTableSchemas).length} table schemas`);
+    cachedSampleData = newSampleCache;
+    logger.info(`[schema-cache] Cached ${Object.keys(cachedTableSchemas).length} table schemas + ${Object.keys(cachedSampleData).length} sample data sets`);
   } catch (err: any) {
     logger.error(`[schema-cache] Failed to load schema: ${err.message}`);
   }
@@ -193,8 +256,8 @@ const schemaHintCache: Record<number, string> = {};
 function buildRoleTailoredSchema(roleNum: number): string {
   if (schemaHintCache[roleNum]) return schemaHintCache[roleNum];
 
-  const isStudentOrContentCreator = roleNum >= 6;
-  const isCollegeScoped = roleNum >= 3 && roleNum <= 5;
+  const isStudentOnly = roleNum === 7;  // Only Student is restricted now (Trainer & Content Creator promoted to admin)
+  const isCollegeScoped = roleNum >= 3 && roleNum <= 4;  // Only CollegeAdmin(3) and Staff(4)
 
   let schema = "DATABASE SCHEMA (live from DB — use these columns directly):\n";
 
@@ -202,15 +265,26 @@ function buildRoleTailoredSchema(roleNum: number): string {
   const restrictedTablesForStudents = ['users', 'institutions', 'colleges', 'departments'];
 
   for (const [table, columns] of Object.entries(cachedTableSchemas)) {
-    if (isStudentOrContentCreator && restrictedTablesForStudents.includes(table)) {
+    if (isStudentOnly && restrictedTablesForStudents.includes(table)) {
       continue; // Hide infrastructure tables from students
     }
     schema += `- ${table}: ${columns}\n`;
   }
 
+  // --- SAMPLE DATA (live from DB — real values for pattern discovery) ---
+  if (Object.keys(cachedSampleData).length > 0) {
+    schema += `\nSAMPLE DATA (3 rows from key tables — use to understand value meanings):\n`;
+    for (const [table, samples] of Object.entries(cachedSampleData)) {
+      if (isStudentOnly && restrictedTablesForStudents.includes(table)) {
+        continue; // Hide restricted table samples from students
+      }
+      schema += `  ${table}:\n    ${samples}\n`;
+    }
+  }
+
   // --- ENUMS & STATUS ---
   schema += `\nENUM VALUES (use EXACT numbers, never strings):\n`;
-  if (!isStudentOrContentCreator) {
+  if (!isStudentOnly) {
     schema += `- users.role: 1=SuperAdmin, 2=Admin, 3=CollegeAdmin, 4=Staff, 5=Trainer, 6=ContentCreator, 7=Student\n`;
     schema += `- users.gender: 1=Male, 2=Female, 3=Other (NULL/0=not set)\n`;
   }
@@ -221,7 +295,7 @@ function buildRoleTailoredSchema(roleNum: number): string {
   schema += `\nDYNAMIC TABLES (per-college, per-semester):\n`;
   schema += `Pattern: {college_short_name}_{year}_{sem}_{type}\n`;
   schema += `Example: srec_2026_1_coding_result, skcet_2025_2_mcq_result\n`;
-  if (!isStudentOrContentCreator) {
+  if (!isStudentOnly) {
     schema += `Find tables: SHOW TABLES LIKE '{short_name}_%_coding_result'\n`;
   }
   schema += `\n`;
@@ -251,7 +325,7 @@ function buildRoleTailoredSchema(roleNum: number): string {
   schema += `  question_status (json), attempt_datas (json)\n\n`;
 
   schema += `QUERY HINTS:\n`;
-  if (!isStudentOrContentCreator) {
+  if (!isStudentOnly) {
     schema += `- "allocated courses" → COUNT from course_academic_maps (NOT courses table)\n`;
     schema += `- "available courses" → courses WHERE status = 1\n`;
   }
@@ -276,7 +350,7 @@ function buildRoleTailoredSchema(roleNum: number): string {
 IDENTITY / "who am I?" / profile queries:
   Use ONE query to get profile + all course stats:
   SELECT u.name, u.email, u.contact_number, u.roll_no, u.dob,
-    CASE u.gender WHEN 0 THEN 'Male' WHEN 1 THEN 'Female' WHEN 2 THEN 'Other' END as gender,
+    CASE u.gender WHEN 1 THEN 'Male' WHEN 2 THEN 'Female' WHEN 3 THEN 'Other' ELSE 'Not set' END as gender,
     c.college_name, d.department_name, b.batch_name, s.section_name,
     ua.academic_info, ua.personal_info,
     co.course_name,
@@ -422,7 +496,7 @@ ASSIGNMENTS: user_assignments table
   schema += `IMPORTANT — Finding dynamic tables for a student:\n`;
   schema += `  The student's dynamic table prefixes are pre-fetched and provided in the ACCESS CONTROL section.\n`;
   schema += `  Use those prefixes directly — do NOT query college_short_name or cam.db yourself!\n`;
-  if (!isStudentOrContentCreator) {
+  if (!isStudentOnly) {
     schema += `  If no prefixes are provided, query: SELECT DISTINCT cam.db FROM course_wise_segregations cws\n`;
     schema += `    JOIN course_academic_maps cam ON cws.course_allocation_id = cam.allocation_id\n`;
     schema += `    WHERE cws.user_id = {user_id} AND cam.db IS NOT NULL\n`;
@@ -508,7 +582,7 @@ ASSIGNMENTS: user_assignments table
   schema += `  course_topic_maps: course_id → title_id → topic_id + order\n`;
   schema += `  languages table: id → language_name (for compile_id lookups in coding_result)\n\n`;
 
-  if (!isStudentOrContentCreator) {
+  if (!isStudentOnly) {
     schema += `ROLE MAPPING: users.role integer values:\n`;
     schema += `  1=Super Admin, 2=Admin, 3=College Admin, 4=Staff, 5=Trainer, 6=Content Creator, 7=Student\n\n`;
 
@@ -523,14 +597,16 @@ ASSIGNMENTS: user_assignments table
   schema += `     - NO progress data exists (do not query for progress)\n`;
   schema += `     - NO test scores exist (do not query dynamic tables)\n`;
   schema += `     - NO time spent data exists\n`;
-  schema += `     Report: "You don't have any enrolled courses yet." and STOP.\n`;
-  schema += `     Execute as many SQL queries as needed to fully answer the user's question, up to a maximum of 4 for complex analysis.\n`;
-  schema += `  2. For PUBLIC catalog questions (topics in a course, course list, college list):\n`;
+  schema += `     Report: "You don't have any enrolled courses yet." and STOP.\n\n`;
+  schema += `MULTI-PART QUERIES & ANALYTICS (CRITICAL):\n`;
+  schema += `  1. For complex questions (e.g., "compare top students", "trainer performance"), you MUST execute multiple SQL queries until you assemble the full picture. NEVER give up.\n`;
+  schema += `  2. Use results from Query 1 to form Query 2 if needed (e.g., joining dynamic tables or getting IDs first).\n\n`;
+  schema += `SCORE FILTERING (CRITICAL):\n`;
+  schema += `  1. When calculating averages, rankings, or trainer stats, ALWAYS add "WHERE score > 0".\n`;
+  schema += `  2. Always use INNER JOIN instead of LEFT JOIN to exclude inactive zero-score records.\n\n`;
+  schema += `  3. For PUBLIC catalog questions (topics in a course, course list, college list):\n`;
   schema += `     Query catalog tables directly — course_topic_maps, courses, topics,\n`;
-  schema += `     course_academic_maps, colleges. These do NOT need user_id filter.\n`;
-  schema += `     Do NOT search dynamic tables for catalog info.\n`;
-  schema += `  3. If first query returns 0 rows and second query also returns 0 rows →\n`;
-  schema += `     STOP immediately. Do not try a third query. The data does not exist.\n\n`;
+  schema += `     course_academic_maps, colleges. These do NOT need user_id filter.\n\n`;
 
   schema += `RANK QUERIES:\n`;
   schema += `  - User rank is stored in course_wise_segregations.\`rank\` column\n`;
@@ -550,7 +626,18 @@ setInterval(loadSchemaCache, 30 * 60_000);
 
 
 // ── User profile (always fetched for context + college_id) ────────────────────
+const userProfileCache = new Map<number, { data: any, ts: number }>();
+setInterval(() => {
+  const cutoff = Date.now() - 5 * 60_000;
+  for (const [key, val] of userProfileCache.entries()) {
+    if (val.ts < cutoff) userProfileCache.delete(key);
+  }
+}, 60_000);
+
 async function getUserProfile(userId: number) {
+  const cached = userProfileCache.get(userId);
+  if (cached) return cached.data;
+
   const res = await runQuery(`
     SELECT u.id, u.name, u.email, u.role, u.roll_no,
       c.id AS college_id, c.college_name, c.college_short_name,
@@ -562,14 +649,17 @@ async function getUserProfile(userId: number) {
     LEFT JOIN batches b ON b.id = ua.batch_id
     WHERE u.id = ${isNaN(Number(userId)) ? 0 : Number(userId)} LIMIT 1
   `);
-  return res.rows?.[0] || null;
+
+  const data = res.rows?.[0] || null;
+  if (data) userProfileCache.set(userId, { data, ts: Date.now() });
+  return data;
 }
 
 async function getUserProfileFull(userId: number) {
   // Query 1: Basic profile
   const profileRes = await runQuery(`
     SELECT u.id, u.name, u.email, u.contact_number, u.roll_no, u.dob,
-      CASE u.gender WHEN 0 THEN 'Male' WHEN 1 THEN 'Female' WHEN 2 THEN 'Other' ELSE 'Not set' END as gender,
+      CASE u.gender WHEN 1 THEN 'Male' WHEN 2 THEN 'Female' WHEN 3 THEN 'Other' ELSE 'Not set' END as gender,
       c.id AS college_id, c.college_name, c.college_short_name,
       d.department_name, b.batch_name, s.section_name
     FROM users u
@@ -704,8 +794,8 @@ function buildScopePrompt(
 
   // -- RESTRICTED scope: about other users -- check role first --
   if (scope === "restricted") {
-    // Student/Content Creator -> BLOCKED
-    if (roleNum >= 6) {
+    // Student -> BLOCKED
+    if (roleNum === 7) {
       return {
         prompt: "",
         blocked: true,
@@ -713,8 +803,8 @@ function buildScopePrompt(
       };
     }
 
-    // Super Admin / Admin -> full access
-    if (roleNum <= 2) {
+    // Super Admin / Admin / Trainer / Content Creator -> full access
+    if ([1, 2, 5, 6].includes(roleNum)) {
       prompt += `SCOPE: ADMIN - Full platform access. No restrictions.\n`;
       prompt += `RULES:\n`;
       prompt += `- You can query ANY table without restrictions.\n`;
@@ -856,8 +946,7 @@ async function handleWithTools(
   scopePrompt: string,
   scope: string,
 ) {
-  const chatModel = makeDeepSeekModel("deepseek-chat");
-  const tokenTrackerId = `req-${userId}-${Date.now()}`;
+  const chatModel = makeModel();
   const roleName = getRoleName(roleNum);
   const isStudentRole = roleNum === ROLES.STUDENT;
 
@@ -905,6 +994,7 @@ CRITICAL RULES (MUST FOLLOW):
 ██ CWS RANKING: CWS \`rank\` is DEPARTMENT rank, NOT global. Use \`score\` for cross-department comparisons. Always label it "Dept Rank".
 ██ CWS AVERAGES: When averaging scores, EXCLUDE courses with progress=0 (not started). Don't average a 900 score with a 0.
 ██ CWS GROUPING: CWS has type=1 (Prepare) and type=2 (Assessment) as SEPARATE rows per course. Group by course_id first to avoid double-counting.
+██ SCORE FILTER: When querying scores/averages/trainers, ALWAYS use INNER JOIN and add "WHERE score > 0" to exclude inactive students from skewing averages.
 RULES:
 1. You already have the full schema above — go DIRECTLY to run_sql. Only use list_tables/describe_table for tables NOT in the schema.
 2. Only SELECT queries allowed
@@ -924,22 +1014,34 @@ RULES:
    b. Then get topics from course_academic_maps using the course_id + college_id
    c. Then get per-question results from dynamic tables using course_allocation_id = cam.id
    d. Present topic-wise breakdown with solved/partial/wrong counts
+10. DATA QUALITY (CRITICAL):
+    a. NEVER give up on complex questions. Run additional tools and combine data until you have the complete answer. NEVER say "I am unable to provide".
+    b. When querying scores/averages, ALWAYS use INNER JOIN (not LEFT JOIN) and add "WHERE score > 0" to exclude inactive students from skewing averages.
+    c. For trainer queries, use INNER JOIN with "WHERE score > 0". Use a balanced approach considering average score, average progress_pct, feedback_rating, and student count.
+11. NAMES OVER IDs (MANDATORY):
+    a. ALWAYS return Human Names (trainer_name, student_name, college_name), NEVER return raw database IDs (trainer_id, user_id).
+    b. If a query only yields IDs, you MUST run a second query to JOIN the \`users\` or \`colleges\` table to get actual names before answering.
+12. RICH MARKDOWN TABLES (MANDATORY):
+    a. If your final data contains multiple rows (like a Top 3 list), you MUST format it as a beautifully aligned Markdown Table. Do NOT use bullet points for lists of data.
 
 FOLLOW-UP QUESTIONS:
 When the user asks a follow-up like "and how about X?" or "what about Y?",
 provide the SAME level of detail as your previous response.
 Do NOT summarize or shorten follow-up answers.
 
-STUDENT DATA BOUNDARIES:
+${isStudentRole ? `STUDENT DATA BOUNDARIES:
 - You can ONLY access this student's own data.
 - If the question asks about other students, rankings, class toppers,
   or any cross-user data, respond:
   "I can only show your personal data. Try asking about your own
   scores, progress, or course details."
-- Do NOT show technical error messages. Give friendly responses.
+- Do NOT show technical error messages. Give friendly responses.` : `ADMIN DATA BOUNDARIES:
+- You have FULL ACCESS to all cross-user data, rankings, analytics, and platform-wide queries.`}
 
 RESPONSE STYLE:
 ${CORE_RESPONSE_STYLE}
+- IF the data contains more than 1 row, ALWAYS format it as a clean, aligned Markdown Table.
+- NEVER return raw lists of IDs. Replace IDs with Names.
 - Include ALL key numbers, just use fewer words.
 - NEVER mention table names, column names, SQL queries, or database internals in your response. Present data naturally. Say "performance data" not "course_wise_segregations table".`;
 
@@ -1061,7 +1163,6 @@ ${CORE_RESPONSE_STYLE}
       { role: "user" as const, content: question.trim() }
     ],
     tools,
-    headers: { "x-ds-tracker": tokenTrackerId } as Record<string, string>, // Passed into HTTP fetch map for accurate DeepSeek token counting
     stopWhen: stepCountIs(5), // FIX: Prevents runaway agent loops (cuts out 40s+ delays)
     temperature: 0,
     // maxOutputTokens: 2048,
@@ -1080,23 +1181,14 @@ ${CORE_RESPONSE_STYLE}
   let report = result.text?.trim() || "";
 
   // Retrieve the global token counts extracted directly from DeepSeek HTTP payloads
-  let inputToken = 0;
-  let outputToken = 0;
-  const recordedTokens = deepseekUsages.get(tokenTrackerId);
-  if (recordedTokens) {
-    inputToken = recordedTokens.input;
-    outputToken = recordedTokens.output;
-    deepseekUsages.delete(tokenTrackerId); // cleanup memory
-  } else {
-    // fallback if interceptor failed
-    inputToken = (result.usage as any)?.inputTokens || (result.usage as any)?.promptTokens || 0;
-    outputToken = (result.usage as any)?.outputTokens || (result.usage as any)?.completionTokens || 0;
-  }
+  // Retrieve global token usage safely from ai sdk object
+  let inputToken = (result.usage as any)?.promptTokens || 0;
+  let outputToken = (result.usage as any)?.completionTokens || 0;
 
   // Fix F: If we hit max steps and got garbage output, try to summarize collected data
   if (stepsUsed >= 5 && (!report || report.toLowerCase().includes('let me fix') || report.toLowerCase().includes('let me try'))) {
     // Collect all successful tool results with data
-    const allData = result.steps?.flatMap(s =>
+    const allData = result.steps?.flatMap((s: any) =>
       ((s.toolResults ?? []) as any[])
         .filter(tr => tr.result?.rows?.length > 0)
         .map(tr => tr.result)
@@ -1176,11 +1268,25 @@ async function handleDbQuestion(
     classifierQuestion = `[Follow-up to: "${lastCtx.question}"] ${question}`;
   }
 
-  // Step 1: Run through dynamic LLM classifier AND get user profile concurrently
-  const [classificationResult, profile] = await Promise.all([
-    classifyQuestion(classifierQuestion, roleNum, roleName),
-    getUserProfile(numericUserId)
-  ]);
+  // OPT 4: Check IDENTITY fast-path before classification
+  const IDENTITY_PATTERNS = /\b(who\s+(am\s+i|i\s+am)|my\s+name|my\s+profile|my\s+details|tell\s+me\s+about\s+(myself|me)|about\s+me)\b/i;
+  const isIdentityMatched = IDENTITY_PATTERNS.test(question);
+
+  let classificationResult: any = null;
+  let profile: any = null;
+
+  if (isIdentityMatched) {
+    classificationResult = { route: "db", scope: "personal", reason: "identity", tables_hint: "", usage: null };
+    profile = await getUserProfile(numericUserId);
+  } else {
+    const res = await Promise.all([
+      classifyQuestion(classifierQuestion, roleNum, roleName),
+      getUserProfile(numericUserId)
+    ]);
+    classificationResult = res[0];
+    profile = res[1];
+  }
+
   const { route, scope, tables_hint, usage: classUsage } = classificationResult;
 
   // IMPORTANT: We use the normalized question as the cache key to safely deduplicate identical consecutive questions,
@@ -1213,10 +1319,7 @@ async function handleDbQuestion(
     };
   }
 
-  // STEP 2: Handle IDENTITY fast-path — rich profile, zero LLM calls
-  const IDENTITY_PATTERNS = /\b(who\s+(am\s+i|i\s+am)|my\s+name|my\s+profile|my\s+details|tell\s+me\s+about\s+(myself|me)|about\s+me)\b/i;
-
-  if (classificationResult.reason === "identity" || IDENTITY_PATTERNS.test(question)) {
+  if (classificationResult.reason === "identity" || isIdentityMatched) {
 
     const data = await getUserProfileFull(numericUserId);
 
@@ -1246,7 +1349,8 @@ async function handleDbQuestion(
       report += `- **Email:** ${p.email}\n`;
       report += `- **Roll Number:** ${p.roll_no || 'N/A'}\n`;
       if (p.dob) report += `- **Date of Birth:** ${new Date(p.dob).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}\n`;
-      if (p.gender && p.gender !== 'Not set') report += `- **Gender:** ${p.gender}\n`;
+      const genderStr = p.gender || "Not specified";
+      if (p.gender) report += `- **Gender:** ${genderStr}\n`;
       report += `\n**Academic Information:**\n`;
       report += `- **College:** ${p.college_name || 'N/A'}\n`;
       report += `- **Department:** ${p.department_name || 'N/A'}\n`;
@@ -1306,7 +1410,7 @@ async function handleDbQuestion(
   }
 
   // ── HARD BLOCK: restricted scope for students on general route ──
-  if (route === "general" && scope === "restricted" && roleNum >= 6) {
+  if (route === "general" && scope === "restricted" && roleNum === 7) {
     const elapsed = Date.now() - startTime;
     const response = {
       report: "I cannot discuss internal system architecture, source code, or platform build details. For technical information, please contact your administrator.",
@@ -1321,8 +1425,8 @@ async function handleDbQuestion(
 
   // ── GENERAL KNOWLEDGE (no DB) ──
   if (route === "general") {
-    const reasonerModel = makeDeepSeekModel("deepseek-reasoner");
-    const chatModel = makeDeepSeekModel("deepseek-chat");
+    const reasonerModel = makeModel("gemini-reasoning"); // Transitioned from deepseek-reasoner
+    const chatModel = makeModel("gemini-chat"); // Transitioned from deepseek-chat
     try {
       let reportText = "";
 
@@ -1338,13 +1442,13 @@ async function handleDbQuestion(
         totalOutputToken += (result.usage as any)?.outputTokens || (result.usage as any)?.completionTokens || 0;
         reportText = result.text?.trim() || "";
       } catch (reasonerErr) {
-        logger.warn(`[general] Reasoner threw an error, falling back to deepseek-chat`, { error: reasonerErr });
+        logger.warn(`[general] Reasoner threw an error, falling back to gemini-chat`, { error: reasonerErr });
       }
 
-      // Fix 3 (GAP 9): If reasoner returns empty OR threw an error, retry once with deepseek-chat as fallback
+      // Fix 3 (GAP 9): If reasoner returns empty OR threw an error, retry once with gemini-chat as fallback
       if (!reportText || reportText.length === 0) {
         if (reportText === "") {
-          logger.warn(`[general] Reasoner returned empty for: "${question.slice(0, 50)}", falling back to deepseek-chat`);
+          logger.warn(`[general] Reasoner returned empty for: "${question.slice(0, 50)}", falling back to gemini-chat`);
         }
         try {
           const fallback = await generateText({
@@ -1382,7 +1486,7 @@ async function handleDbQuestion(
   // ── DB QUESTION: Classify → Scope → LLM ──
   try {
     // STEP 2.5: Hardcoded security fallback — catch anything the LLM classifier missed
-    if (scope !== 'restricted' && roleNum >= 6) {
+    if (scope !== 'restricted' && roleNum === 7) {
       const restrictedCheck = checkRestrictedAccess(question, roleNum, scope);
       if (!restrictedCheck.allowed) {
         const elapsed = Date.now() - startTime;

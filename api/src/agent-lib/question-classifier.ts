@@ -3,34 +3,14 @@
 // ════════════════════════════════════════════════════════════════
 
 import { generateText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { loggers } from "../logging";
 
 const logger = loggers.agent();
 
-// Configure DeepSeek provider
-const patchedFetch = async (url: string, options: any) => {
-  if (options?.body) {
-    try {
-      const body = JSON.parse(options.body);
-      if (Array.isArray(body.tools)) {
-        body.tools = body.tools.map((t: any) => {
-          if (t.type === "function" && t.function?.parameters && !t.function.parameters.type) {
-            t.function.parameters.type = "object";
-          }
-          return t;
-        });
-        options.body = JSON.stringify(body);
-      }
-    } catch { /* not JSON */ }
-  }
-  return fetch(url, options);
-};
-
-const deepseekProvider = createOpenAI({
-  apiKey: process.env.DEEPSEEK_API_KEY,
-  baseURL: "https://api.deepseek.com",
-  fetch: patchedFetch as any,
+// --- Option B: Gemini 2.0 Flash (ACTIVE) ---
+const google = createGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_AI_API_KEY,
 });
 
 export type QuestionScope = "public" | "personal" | "restricted";
@@ -124,19 +104,19 @@ Generate ONLY a valid JSON object matching this schema. No markdown wrapping.
 export async function classifyQuestion(question: string, roleNum: number, roleName: string): Promise<ClassificationResult> {
   const q = question.trim();
 
-  // SUPER FAST PATH FOR GREETINGS
-  if (/^(hi|hello|hey|greetings)[^a-z0-9]*$/i.test(q)) {
+  // 1. SUPER FAST PATH FOR GREETINGS
+  if (/^(hi|hello|hey|greetings|good morning|good evening)[^a-z0-9]*$/i.test(q)) {
     return { route: "greeting", scope: "public", reason: "simple greeting", tables_hint: [], usage: { promptTokens: 0, completionTokens: 0 } };
   }
 
-  // SUPER FAST PATH FOR PURE IDENTITY
-  if (/^\s*(who\s+am\s+i|who\s+i\s+am|my\s+profile)\s*\??\s*$/i.test(q)) {
-    return { route: "db", scope: "personal", reason: "identity", tables_hint: ["users", "user_academics"], usage: { promptTokens: 0, completionTokens: 0 } };
+  // 2. BUG 3: EXPANDED IDENTITY FAST PATH (Kept, as this is a valid identity check)
+  if (/^\s*(who\s+am\s+i|who\s+i\s+am|my\s+profile|tell\s+me\s+about\s+(myself|me)|my\s+details|about\s+me|my\s+info|my\s+account)\s*\??\s*$/i.test(q)) {
+    return { route: "db", scope: "personal", reason: "identity fast path", tables_hint: ["users", "user_academics"], usage: { promptTokens: 0, completionTokens: 0 } };
   }
 
   try {
     const { text, usage } = await generateText({
-      model: deepseekProvider.chat("deepseek-chat"),
+      model: google("gemini-2.5-flash"),
       system: CLASSIFIER_SYSTEM_PROMPT,
       messages: [
         { role: "user", content: `User Role: ${roleNum} (${roleName})\nQuestion: "${q}"` }
@@ -155,6 +135,13 @@ export async function classifyQuestion(question: string, roleNum: number, roleNa
     if (parsed.scope === "public" && /\b(my|i|me|myself)\b/i.test(q)) {
       parsed.scope = "personal";
       parsed.reason = "fallback to personal due to self-reference";
+    }
+
+    // BUG 1: ADMIN SCOPE OVERRIDE 
+    // Admin/Trainer/Content Creator safety fallback: These roles should not be restricted by the LLM
+    if (parsed.scope === "restricted" && [1, 2, 5, 6].includes(roleNum)) {
+      parsed.scope = "public";
+      parsed.reason = "admin/trainer/content-creator role override from restricted to public";
     }
 
     return parsed;
