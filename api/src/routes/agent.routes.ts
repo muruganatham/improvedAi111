@@ -954,7 +954,8 @@ async function getGreetingContext(userId: number, roleNum: number, collegeId: nu
 function getGreeting(userName: string, roleName: string, collegeName: string | null, ctx: any = {}): string {
   // ── SUPERADMIN / ADMIN ──
   if (roleName === "SuperAdmin" || roleName === "Admin") {
-    let greeting = `Hello ${userName}! Welcome back.\n\n`;
+    let greeting = `Hello ${userName}! Welcome back. 🚀\n`;
+    greeting += `I am **Devero AI**, your platform's high-intelligence data analyst. I'm here to help you monitor performance and optimize educational outcomes.\n\n`;
     greeting += `Try asking:\n`;
     if (ctx.topColleges?.length >= 2) {
       greeting += `- Compare ${ctx.topColleges[0].college_name} vs ${ctx.topColleges[1].college_name}\n`;
@@ -968,7 +969,8 @@ function getGreeting(userName: string, roleName: string, collegeName: string | n
 
   // ── COLLEGE ADMIN ──
   if (roleName === "CollegeAdmin") {
-    let greeting = `Hello ${userName}! Welcome back.\n\n`;
+    let greeting = `Hello ${userName}! Welcome back. 🏛️\n`;
+    greeting += `I am **Devero AI**, your dedicated college data companion. I'm here to help you track your campus progress and identify growth opportunities.\n\n`;
     if (collegeName) {
       greeting += `Your College: ${collegeName}\n`;
       if (ctx.collegeStudents) greeting += `- ${ctx.collegeStudents} active students\n`;
@@ -993,7 +995,8 @@ function getGreeting(userName: string, roleName: string, collegeName: string | n
 
   // ── STAFF / TRAINER ──
   if (roleName === "Staff" || roleName === "Trainer") {
-    let greeting = `Hello ${userName}! Welcome back.\n\n`;
+    let greeting = `Hello ${userName}! Welcome back. 👨‍🏫\n`;
+    greeting += `I am **Devero AI**, your teaching and analytics assistant. I'm here to help you monitor student performance and drive classroom success.\n\n`;
     if (collegeName) {
       greeting += `Your College: ${collegeName}\n`;
       if (ctx.collegeStudents) greeting += `- ${ctx.collegeStudents} students under your watch\n`;
@@ -1015,7 +1018,8 @@ function getGreeting(userName: string, roleName: string, collegeName: string | n
   }
 
   // ── STUDENT ──
-  let greeting = `Hello ${userName}! Welcome back.\n\n`;
+  let greeting = `Hello ${userName}! Welcome back. 🚀\n`;
+  greeting += `I am **Devero AI**, your personal academic mentor and career guide. I'm here to help you master your courses and land your dream job!\n\n`;
   if (ctx.studentCourses?.length > 0) {
     greeting += `Your Courses:\n`;
     for (const c of ctx.studentCourses) {

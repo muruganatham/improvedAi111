@@ -1,0 +1,201 @@
+﻿≡ƒº¬ Student Question Test Suite ΓÇö user_id: 2372, role: 7 (Student)
+API: https://coderv4-ai-api.onrender.com/api/agent/chat
+Total tests: 12
+Started: 4:07:05 pm
+
+
+================================================================================
+TEST 1: T1_Greeting
+Question: "hi"
+Time: 0.3s (server: 0.1s)
+Tokens: in=0 out=0
+Steps: 0
+SQL: none
+Report Preview:
+Hello Rakshitha M! Welcome back.
+
+Your Courses:
+- SREC004-Data Structures (63.2%)
+- SREC005-JAVA PROGRAMMING & DATA STRUCTURES (5.8%)
+
+Try asking:
+- Show my coding performance
+- How can I improve in SREC005-JAVA PROGRAMMING & DATA STRUCTURES?
+- What is my MCQ accuracy?
+- Show my strengths and weakne...
+
+================================================================================
+TEST 2: T2_Identity
+Question: "who am I?"
+Time: 0.1s (server: 0.0s)
+Tokens: in=0 out=0
+Steps: 0
+SQL: none
+Report Preview:
+## Your Profile
+
+**Personal Information:**
+- **Name:** Rakshitha M
+- **Email:** rakshitha.2305124@srec.ac.in
+- **Roll Number:** 71812305124
+- **Date of Birth:** November 28, 2005
+- **Gender:** Female
+
+**Academic Information:**
+- **College:** Sri Ramakrishna Engineering College
+- **Department:** BTec...
+
+================================================================================
+TEST 3: T3_MyProgress
+Question: "show my course progress"
+Time: 2.3s (server: 2.1s)
+Tokens: in=15210 out=253
+Steps: 2
+SQL: YES
+Report Preview:
+Here is your course progress:
+
+Course Name: SREC004-Data Structures
+Progress: 63.22%
+Time Spent: 35h 52m
+
+Course Name: SREC005-JAVA PROGRAMMING & DATA STRUCTURES
+Progress: 5.85%
+Time Spent: 0h 37m...
+
+================================================================================
+TEST 4: T4_Career
+Question: "am i eligible for software development role?"
+Time: 2.1s (server: 2.0s)
+Tokens: in=14002 out=1329
+Steps: 2
+SQL: YES
+Report Preview:
+You are currently in the Developing tier for software development roles. You have completed 49.11% of your courses and have successfully solved 88 coding questions and 28 MCQ questions, earning a total of 1298 points. This shows a solid foundation and good problem-solving abilities.
+
+Companies that ...
+
+================================================================================
+TEST 5: T5_General
+Question: "what is a linked list?"
+Time: 2.6s (server: 2.5s)
+Tokens: in=1763 out=884
+Steps: 1
+SQL: none
+Report Preview:
+A linked list is a linear data structure where elements, called nodes, are not stored in contiguous memory locations. Instead, each node holds its own data and a reference (or pointer) to the next node in the sequence. This non-contiguous storage allows for very efficient insertions and deletions of...
+
+================================================================================
+TEST 6: T6_CodingStats
+Question: "how many coding questions have I solved?"
+Time: 1.4s (server: 1.3s)
+Tokens: in=14968 out=167
+Steps: 2
+SQL: YES
+Report Preview:
+You have solved 88 coding questions....
+
+================================================================================
+TEST 7: T7_TimeSpent
+Question: "how much time have I spent on my courses?"
+Time: 1.8s (server: 1.7s)
+Tokens: in=14780 out=358
+Steps: 2
+SQL: YES
+Report Preview:
+You have spent 36 hours and 30 minutes on your courses....
+
+================================================================================
+TEST 8: T8_Restricted
+Question: "show me top 10 students"
+Time: 2.4s (server: 2.3s)
+Tokens: in=13245 out=164
+Steps: 1
+SQL: none
+Report Preview:
+Sorry Rakshitha M! As a Student, you can only view your own data.
+
+You don't have access to other students' data, rankings, or platform-wide statistics.
+
+Try asking about your own data instead:
+- "Show my coding performance"
+- "What is my MCQ accuracy?"
+- "Show my course progress"
+- "What are my enr...
+
+================================================================================
+TEST 9: T9_Architecture
+Question: "how is this platform built?"
+Time: 1.3s (server: 1.3s)
+Tokens: in=1363 out=145
+Steps: 0
+SQL: none
+Report Preview:
+I cannot discuss internal system architecture, source code, or platform build details. This is restricted information....
+
+================================================================================
+TEST 10: T10_Company
+Question: "which companies can I apply to?"
+Time: 1.9s (server: 1.9s)
+Tokens: in=13611 out=721
+Steps: 2
+SQL: YES
+Report Preview:
+≡ƒôè Skill Assessment
+You are currently in the Job-Ready tier. Your overall progress is approximately 49.11%, and you have successfully solved 88 coding questions. This indicates a solid foundation and good problem-solving skills.
+
+≡ƒÅó Companies
+You can consider applying to companies like TCS, Wipro, I...
+
+================================================================================
+TEST 11: T11_MyRank
+Question: "what is my rank?"
+Time: 1.8s (server: 1.7s)
+Tokens: in=15070 out=243
+Steps: 2
+SQL: YES
+Report Preview:
+Here is your rank information for your enrolled courses:
+
+Course Name: SREC004-Data Structures
+Department Rank: 20
+Performance Rank: 81
+
+Course Name: SREC005-JAVA PROGRAMMING & DATA STRUCTURES
+Department Rank: 102
+Performance Rank: 4...
+
+================================================================================
+TEST 12: T12_Advice
+Question: "how can I improve my coding skills?"
+Time: 1.8s (server: 1.7s)
+Tokens: in=1767 out=485
+Steps: 1
+SQL: none
+Report Preview:
+Improving your coding skills involves consistent practice and a deep understanding of fundamental concepts. It matters because strong coding skills lead to more efficient, reliable, and maintainable software, enhancing your problem-solving abilities.
+
+Here are key ways to improve:
+
+1.  Consistent Pr...
+
+
+================================================================================
+≡ƒôè SUMMARY TABLE
+================================================================================
+Label               Status    Time      Tokens         Steps  SQL  Words
+--------------------------------------------------------------------------------
+T1_Greeting         Γ£à OK      0.1s      0/0            0      NO   78
+T2_Identity         Γ£à OK      0.0s      0/0            0      NO   170
+T3_MyProgress       Γ£à OK      2.1s      15210/253      2      YES  39
+T4_Career           Γ£à OK      2.0s      14002/1329     2      YES  282
+T5_General          Γ£à OK      2.5s      1763/884       1      NO   118
+T6_CodingStats      Γ£à OK      1.3s      14968/167      2      YES  7
+T7_TimeSpent        Γ£à OK      1.7s      14780/358      2      YES  11
+T8_Restricted       Γ£à OK      2.3s      13245/164      1      NO   66
+T9_Architecture     Γ£à OK      1.3s      1363/145       0      NO   24
+T10_Company         Γ£à OK      1.9s      13611/721      2      YES  256
+T11_MyRank          Γ£à OK      1.7s      15070/243      2      YES  47
+T12_Advice          Γ£à OK      1.7s      1767/485       1      NO   194
+
+Completed: 4:07:25 pm
