@@ -127,11 +127,15 @@ Generate ONLY a valid JSON object matching this schema. No markdown wrapping.
   "tables_hint": ["table1", "table2"]
 }`;
 
-export async function classifyQuestion(question: string, roleNum: number, roleName: string): Promise<ClassificationResult> {
+export async function classifyQuestion(question: string, roleNum: number, roleName: string, hasHistory: boolean = false): Promise<ClassificationResult> {
   const q = question.trim();
 
   // 1. SUPER FAST PATH FOR GREETINGS
   if (/^(hi|hello|hey|greetings|good morning|good evening)[^a-z0-9]*$/i.test(q)) {
+    // If mid-conversation, just say hi back without the full dashboard
+    if (hasHistory) {
+      return { route: "general", scope: "public", reason: "mid-conversation greeting", tables_hint: [], usage: { promptTokens: 0, completionTokens: 0 } };
+    }
     return { route: "greeting", scope: "public", reason: "simple greeting", tables_hint: [], usage: { promptTokens: 0, completionTokens: 0 } };
   }
 

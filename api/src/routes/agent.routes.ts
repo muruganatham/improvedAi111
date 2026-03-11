@@ -1500,8 +1500,9 @@ async function handleDbQuestion(
     classificationResult = { route: "db", scope: "personal", reason: "identity", tables_hint: "", usage: null };
     profile = await getUserProfile(numericUserId);
   } else {
+    const hasHistory = history && history.length > 0;
     const res = await Promise.all([
-      classifyQuestion(classifierQuestion, roleNum, roleName),
+      classifyQuestion(classifierQuestion, roleNum, roleName, hasHistory),
       getUserProfile(numericUserId)
     ]);
     classificationResult = res[0];
@@ -1676,7 +1677,7 @@ async function handleDbQuestion(
           const fallback = await generateText({
             model: chatModel,
             system: GENERAL_KNOWLEDGE_PROMPT,
-            messages: [{ role: "user" as const, content: question.trim() }],
+            messages: [...(history as any), { role: "user" as const, content: question.trim() }],
             temperature: 0.3,
           });
           totalInputToken += (fallback.usage as any)?.inputTokens || (fallback.usage as any)?.promptTokens || 0;
