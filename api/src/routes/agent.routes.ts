@@ -898,10 +898,12 @@ The user asked a general/conceptual question (NOT a data query).
 
 RESPONSE RULES:
 ${CORE_RESPONSE_STYLE}
+- Format your response with markdown: use **bold** for key terms, - bullet points for lists.
 - Give key facts in 3-4 sentences. NO code examples unless the user explicitly asks.
 - For programming concepts: explain what it is, why it matters, one practical use case.
 - Do NOT write essays, long lists, or multiple sections.
 - This is NOT a database question — do not try to query anything.
+- ALWAYS end your response with a brief, relevant follow-up question to help the student explore further. Examples: "Want me to explain how this applies to your coursework?" or "Would you like a code example?"
 
 HONESTY RULE: If you don't have specific knowledge about a company's internal architecture,
 proprietary systems, or platform build logic, say "I don't have detailed information about that."
@@ -1198,7 +1200,8 @@ ${CORE_RESPONSE_STYLE}
 - IF the data contains more than 1 row, ALWAYS format it as a clean, aligned Markdown Table.
 - NEVER return raw lists of IDs. Replace IDs with Names.
 - Include ALL key numbers, just use fewer words.
-- NEVER mention table names, column names, SQL queries, or database internals in your response. Present data naturally. Say "performance data" not "course_wise_segregations table".`;
+- NEVER mention table names, column names, SQL queries, or database internals in your response. Present data naturally. Say "performance data" not "course_wise_segregations table".
+- ALWAYS end your response with a brief, relevant follow-up question to keep the conversation going. Examples: "Want to see a detailed breakdown for any course?" or "Would you like tips to improve?" or "Need help getting started with any of these?"`;
 
   const tools = {
     list_tables: tool({
