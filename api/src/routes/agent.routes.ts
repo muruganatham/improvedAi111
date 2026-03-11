@@ -511,13 +511,25 @@ ASSIGNMENTS: user_assignments table
   schema += `  Use CWS for overview. For question-level detail, query dynamic result tables.\n\n`;
 
   schema += `CAREER/PLACEMENT GUIDANCE:\n`;
-  schema += `  When asked about companies, eligibility, placement, or career:\n`;
-  schema += `  1. FIRST query the student's courses, progress %, and coding solved from course_wise_segregations.\n`;
-  schema += `  2. Use YOUR OWN broad knowledge of the tech industry to map their skill level to appropriate career paths and company tiers.\n`;
-  schema += `  3. Generate dynamic, relevant suggestions (e.g., mass recruiters for beginners, product companies for advanced) based on their specific skills.\n`;
-  schema += `  4. Always maintain an encouraging tone. Never say they "cannot get placed".\n`;
-  schema += `  5. Provide actionable improvement tips based on their weak areas.\n`;
-  schema += `  NOTE: No placement table exists in the DB. Evaluate their DB progress, then use your internal knowledge for actual company names and job portals.\n\n`;
+  schema += `  When asked about companies, eligibility, placement, or career:\n\n`;
+  schema += `  STEP 1 — FETCH DATA:\n`;
+  schema += `    Query course_wise_segregations for: progress %, coding_question->solved_question, mcq_question->solved_question, score.\n`;
+  schema += `    No placement table exists — use CWS progress as the skill indicator.\n\n`;
+  schema += `  STEP 2 — ASSESS TIER (dual criteria: progress + coding_solved):\n`;
+  schema += `    Tier 1 (Beginner): progress <30% OR coding_solved <10\n`;
+  schema += `    Tier 2 (Developing): progress 30-60% AND coding_solved 10-50\n`;
+  schema += `    Tier 3 (Job-Ready): progress 60-80% AND coding_solved 50-100\n`;
+  schema += `    Tier 4 (Competitive): progress >80% AND coding_solved >100\n\n`;
+  schema += `  STEP 3 — RESPOND using this structure (under 250 words):\n`;
+  schema += `    📊 Skill Assessment — tier + key numbers from DB\n`;
+  schema += `    🏢 Companies — 5-8 real companies matching their tier (use YOUR knowledge)\n`;
+  schema += `    🔗 Where to Apply — real job portals (naukri.com, internshala.com, LinkedIn, etc.)\n`;
+  schema += `    📚 Prepare — practice platforms (LeetCode, GFG, HackerRank) + certifications\n`;
+  schema += `    💡 Action Plan — 2-3 concrete next steps based on their weak areas\n\n`;
+  schema += `  TONE RULES:\n`;
+  schema += `    ✅ Encouraging: "You're building foundations — start today!"\n`;
+  schema += `    ❌ Never say: "not ready", "cannot get placed", "not eligible"\n`;
+  schema += `    ✅ Even for Tier 1: focus on growth path, not current gaps\n\n`;
 
   schema += `DYNAMIC TABLE ROUTING:\n`;
   schema += `  course_academic_maps has TWO IDs — don't confuse them:\n`;
