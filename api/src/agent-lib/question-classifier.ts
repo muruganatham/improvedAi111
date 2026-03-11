@@ -75,6 +75,14 @@ FOLLOW-UP QUESTIONS:
   treat it as route: "db", scope: "personal".
   Do NOT route follow-ups to "general" unless clearly conceptual.
 
+CAREER/PLACEMENT QUESTIONS:
+- "which company", "am I eligible", "placement", "job ready", 
+  "career options", "can I get placed", "hiring"
+  → route: "db", scope: "personal"
+  → reason: "career assessment needs student skill data"
+  The agent should FIRST fetch the student's courses, progress, and scores,
+  THEN provide career guidance based on their actual skill level.
+
 MARKETPLACE / B2C RULES:
 - "marketplace courses" / "B2C courses" / "free courses" / "available courses on portal" / "courses in marketplace"
   → route: "db", scope: "public", tables_hint: ["course_academic_maps", "courses", "languages"]
