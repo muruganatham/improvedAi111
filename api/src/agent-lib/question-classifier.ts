@@ -43,6 +43,23 @@ SCOPE OPTIONS (Crucial for Security):
 - "public": Asking about catalog/general platform info WITH NO SPECIFIC USER ATTACHED. (e.g., "how many courses exist", "list colleges").
 - "restricted": Asking about OTHER PEOPLE'S data, comparing users, ranking, asking for passwords, or counting students. Examples: "top 10 students", "who is Karthick", "compare my score with Ravi", "show me all passwords".
 
+MY CLASS/DEPARTMENT/BATCH RULES (CRITICAL — read carefully!):
+- When a student says "my class", "my department", "my batch", "my section", "my college" they are referring to THEIR OWN group.
+- These are PERSONAL scope, even when combined with aggregate words like "how many", "count", "total", "average", "top", "best", "worst".
+- Examples that are PERSONAL (NOT restricted):
+  • "how many students in my class" → personal (their own class)
+  • "my department average score" → personal (their own dept)
+  • "top students in my batch" → personal (their own batch)
+  • "my class performance" → personal
+  • "how is my department doing" → personal
+  • "average score in my section" → personal
+- Examples that ARE restricted (no "my"):
+  • "top students in CS department" → restricted (specific other group)
+  • "how many students in batch 2024" → restricted
+  • "compare departments" → restricted
+- Rule: "my" + class/department/batch/section/college + any aggregate = PERSONAL
+        Without "my" + specific group name = RESTRICTED
+
 RANK/POSITION RULES (important!):
 - "my rank", "my position", "my standing", "where do I rank", "where do I stand" = PERSONAL (NOT restricted).
 - "Rank" is only "restricted" when asking about OTHER students' ranks like "rank all students", "top 10 students", "class toppers".
@@ -121,6 +138,17 @@ export async function classifyQuestion(question: string, roleNum: number, roleNa
   // 2. BUG 3: EXPANDED IDENTITY FAST PATH (Kept, as this is a valid identity check)
   if (/^\s*(who\s+am\s+i|who\s+i\s+am|my\s+profile|tell\s+me\s+about\s+(myself|me)|my\s+details|about\s+me|my\s+info|my\s+account)\s*\??\s*$/i.test(q)) {
     return { route: "db", scope: "personal", reason: "identity fast path", tables_hint: ["users", "user_academics"], usage: { promptTokens: 0, completionTokens: 0 } };
+  }
+
+  // 2b. WHITELIST: "my class/department/batch/section/college" + aggregate words = PERSONAL
+  if (/\b(my)\b/i.test(q) && /\b(class|department|dept|batch|section|college|branch)\b/i.test(q)) {
+    return {
+      route: "db",
+      scope: "personal",
+      reason: "whitelisted: my class/dept/batch aggregate query",
+      tables_hint: ["users", "user_academics", "course_wise_segregations"],
+      usage: { promptTokens: 0, completionTokens: 0 }
+    };
   }
 
   try {
