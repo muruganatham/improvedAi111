@@ -1114,7 +1114,8 @@ QUERY SHORTCUTS:
 - "coding/mcq scores (prepare)" → course_wise_segregations WHERE type = 1
 - "coding/mcq scores (assessment)" → course_wise_segregations WHERE type = 2
 - Each CWS row has BOTH coding_question and mcq_question JSON — type is prepare vs assessment, NOT coding vs MCQ!
-- "enrolled courses" → course_wise_segregations or user_course_enrollments WHERE user_id = X
+- "enrolled courses" / "my courses" / "course names" / "what courses" → ALWAYS use: SELECT c.course_name FROM course_wise_segregations cws JOIN courses c ON cws.course_id = c.id WHERE cws.user_id = {userId} AND cws.status = 1 GROUP BY c.course_name
+██ COURSE SCOPING (CRITICAL FOR STUDENTS): When a student asks about courses, course names, "my courses", "give me courses", or anything course-related, you MUST query course_wise_segregations (CWS) with user_id filter and JOIN courses table. NEVER query the raw \`courses\` table alone — that returns ALL platform courses across ALL colleges. The student only wants THEIR enrolled courses.
 ${!isStudentRole ? `- "allocated courses" → COUNT from course_academic_maps (NOT courses table)
 - "available courses" → courses WHERE status = 1
 - "student count" → users WHERE role = 7 AND status = 1
