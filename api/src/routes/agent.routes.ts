@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Agent Routes — Pre-Fetch + Role Access + Anti-Hallucination + Cache + Fallback
  *
  * Architecture:
@@ -850,7 +850,7 @@ function buildScopePrompt(
 const CORE_RESPONSE_STYLE = `
 - Be concise but COMPLETE. Never skip important data.
 - Keep reports under 150-200 words. Use short tables or bullet points for data.
-- End with a relevant follow-up (e.g., "Want more details?" or "Want a deeper breakdown?").
+- Only suggest a follow-up if the answer is incomplete or ambiguous. Do NOT add follow-ups to simple counts, lists, or factual answers.
 - Do NOT use emojis or icons. Keep responses professional and clean.
 - Format: Use PURE PLAINTEXT. Do NOT use any markdown formatting, asterisks (*), or bold text formatting. No ## headings for short answers.
 `;
@@ -1619,9 +1619,7 @@ async function handleDbQuestion(
       responseTimeSec: (totalTime / 1000).toFixed(1),
     };
 
-    // Append token usage to the report and hide the actual SQL from the user
-    response.report = `${response.report}\n\n[Tokens Used: ${totalOutputToken} out | ${totalInputToken} in]`;
-    response.sql = undefined as any;
+    // Keep SQL in response payload for debugging, frontend can ignore it
 
     setCache(responseCacheKey, response, 5 * 60_000);
 
