@@ -510,27 +510,24 @@ ASSIGNMENTS: user_assignments table
   schema += `  ⚠️ cws.course_allocation_id → cam.allocation_id (NOT cam.id!)\n`;
   schema += `  Use CWS for overview. For question-level detail, query dynamic result tables.\n\n`;
 
-  if (isStudentOnly) {
-    schema += `CAREER/PLACEMENT GUIDANCE:\n`;
-    schema += `  When asked about companies, eligibility, placement, or career:\n`;
-    schema += `  1. FIRST query the student's courses and progress from course_wise_segregations\n`;
-    schema += `  2. Assess their skill level based on:\n`;
-    schema += `     - Courses enrolled and progress %\n`;
-    schema += `     - Coding questions solved (from coding_question JSON)\n`;
-    schema += `     - Overall score/badges\n`;
-    schema += `  3. Map skills to career paths:\n`;
-    schema += `     - Progress <30%: "Still building foundations, keep practicing"\n`;
-    schema += `     - Progress 30-60%: "Ready for internships and training programs"\n`;
-    schema += `     - Progress 60-80%: "Eligible for entry-level roles at service companies"\n`;
-    schema += `     - Progress >80%: "Strong candidate for product companies"\n`;
-    schema += `  4. Suggest specific company tiers:\n`;
-    schema += `     - Mass recruiters: TCS, Infosys, Wipro, Cognizant, HCL\n`;
-    schema += `     - Mid-tier: Zoho, Freshworks, Mphasis, LTIMindtree\n`;
-    schema += `     - Product: based on specific skills (Java→backend, DS→algo roles)\n`;
-    schema += `  5. Give actionable improvement tips based on their weak areas\n`;
-    schema += `  NOTE: No placement table exists in DB. Use course progress as the indicator.\n\n`;
-  }
-
+  schema += `CAREER/PLACEMENT GUIDANCE:\n`;
+  schema += `  When asked about companies, eligibility, placement, or career:\n`;
+  schema += `  1. FIRST query the student's courses and progress from course_wise_segregations\n`;
+  schema += `  2. Assess their skill level based on:\n`;
+  schema += `     - Courses enrolled and progress %\n`;
+  schema += `     - Coding questions solved (from coding_question JSON)\n`;
+  schema += `     - Overall score/badges\n`;
+  schema += `  3. Map skills to career paths:\n`;
+  schema += `     - Progress <30%: "Still building foundations, keep practicing"\n`;
+  schema += `     - Progress 30-60%: "Ready for internships and training programs"\n`;
+  schema += `     - Progress 60-80%: "Eligible for entry-level roles at service companies"\n`;
+  schema += `     - Progress >80%: "Strong candidate for product companies"\n`;
+  schema += `  4. Suggest specific company tiers:\n`;
+  schema += `     - Mass recruiters: TCS, Infosys, Wipro, Cognizant, HCL\n`;
+  schema += `     - Mid-tier: Zoho, Freshworks, Mphasis, LTIMindtree\n`;
+  schema += `     - Product: based on specific skills (Java→backend, DS→algo roles)\n`;
+  schema += `  5. Give actionable improvement tips based on their weak areas\n`;
+  schema += `  NOTE: No placement table exists in DB. Use course progress as the indicator.\n\n`;
 
   schema += `DYNAMIC TABLE ROUTING:\n`;
   schema += `  course_academic_maps has TWO IDs — don't confuse them:\n`;
