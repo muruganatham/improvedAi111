@@ -251,7 +251,7 @@ async function loadSchemaCache() {
 // ═══════════════════════════════════════════════════════════════
 const schemaHintCache: Record<number, string> = {};
 
-function buildRoleTailoredSchema(roleNum: number): string {
+function buildRoleTailoredSchema(roleNum: number, scope: string): string {
   if (schemaHintCache[roleNum]) return schemaHintCache[roleNum];
 
   const isStudentOnly = roleNum === 7;  // Only Student is restricted now (Trainer & Content Creator promoted to admin)
@@ -633,6 +633,22 @@ ASSIGNMENTS: user_assignments table
   schema += `  - Do NOT query other users' data to determine rank.\n`;
   schema += `  - Single query: SELECT \`rank\` FROM course_wise_segregations WHERE user_id={id}\n`;
   schema += `    If 0 rows → "You don't have a rank yet (no enrolled courses)." STOP.\n\n`;
+
+  // Change 1: COLLEGE_SCOPED_PROMPT (Security Layer 2)
+  if (scope !== "public" && !isStudentOnly && [3, 4, 5].includes(roleNum)) {
+    schema += `████ SECURITY DIRECTIVE: COLLEGE-SCOPED ACCESS ████\n`;
+    schema += `You are answering a College Admin/Staff/Trainer.\n`;
+    schema += `CRITICAL RULE: They can ONLY see data for their own college.\n`;
+    schema += `For EVERY SINGLE QUERY relating to students, courses, or scores:\n`;
+    schema += `► YOU MUST ALWAYS ADD: WHERE college_id = {userCollegeId} ◄\n`;
+    schema += `\n`;
+    schema += `HOW TO APPLY THIS:\n`;
+    schema += `1. If querying course_wise_segregations: JOIN users u ON user_id=u.id JOIN user_academics ua ON u.id=ua.user_id WHERE ua.college_id = {userCollegeId}\n`;
+    schema += `2. If querying users directly: JOIN user_academics ua ON id=ua.user_id WHERE ua.college_id = {userCollegeId}\n`;
+    schema += `3. If querying dynamic tables (coding_result etc): JOIN users u ON ... JOIN user_academics ua ... WHERE ua.college_id = {userCollegeId}\n`;
+    schema += `\n`;
+    schema += `WARNING: If you forget 'college_id = {userCollegeId}', you will cause a massive data leak. The system WILL reject your query if this is missing.\n\n`;
+  }
 
   schemaHintCache[roleNum] = schema;
   return schema;
@@ -1085,7 +1101,7 @@ ${scopePrompt}
 
 ${followUpContext}
 
-${buildRoleTailoredSchema(roleNum)}
+${buildRoleTailoredSchema(roleNum, scope)}
 
 QUERY SHORTCUTS:
 - "coding/mcq scores (prepare)" → course_wise_segregations WHERE type = 1
@@ -1262,6 +1278,25 @@ ${CORE_RESPONSE_STYLE}
             if (!collegeIdRegex.test(cleaned)) {
               return { error: `Security: Queries by College Admins MUST include a 'college_id = ${collegeId}' filter. If the table lacks this column, you MUST JOIN the user_academics table (e.g., JOIN user_academics ua ON main_table.user_id = ua.user_id WHERE ua.college_id = ${collegeId}).` };
             }
+
+            // Change 2: validateCollegeScope (Security Layer 3)
+            // Hard regex check to ensure the LLM hasn't hallucinated a cross-college query
+            const validateCollegeScope = (sql: string, cid: number | null): boolean => {
+              if (!cid) return false;
+              // Block OR conditions that might bypass the college_id filter
+              if (/\bor\b/i.test(sql) && /college_id/i.test(sql)) return false;
+              // Extract the exact college_id the LLM tried to use
+              const match = sql.match(/college_id\s*=\s*(['"]?)(\d+)\1/i);
+              if (match && parseInt(match[2]) === cid) return true;
+              // Also check IN clauses
+              const inMatch = sql.match(/college_id\s*IN\s*\(\s*(['"]?)(\d+)\1\s*\)/i);
+              return !!(inMatch && parseInt(inMatch[2]) === cid);
+            };
+
+            if (!validateCollegeScope(cleaned, collegeId)) {
+              logger.error(`[Security-L3] Blocked cross-college SQL injection attempt by user ${userId}. SQL: ${cleaned}`);
+              return { error: `CRITICAL SECURITY EXCEPTION: You attempted to query a college_id other than ${collegeId}, or used an unsafe OR clause. This action has been logged and blocked.` };
+            }
           }
 
           const res = await databaseConnectionService.executeQuery(
@@ -1416,6 +1451,21 @@ async function handleDbQuestion(
   const roleName = getRoleName(roleNum);
   const numericUserId = Number(userId) || 0;
 
+  // Change 4: College ID Resolution (Required for Scoped Security)
+  // Fetch profile early because we absolutely need the college_id for LLM prompt & validator
+  let profile: any = null;
+  try {
+    profile = await getUserProfile(numericUserId);
+  } catch (err: any) {
+    logger.error(`[College-Scope] Failed to fetch profile for user ${numericUserId}`);
+  }
+  const userCollegeId = profile?.college_id || null;
+  const isCollegeScopedRole = [3, 4, 5].includes(roleNum); // Admin, Staff, Trainer
+  
+  if (isCollegeScopedRole && !userCollegeId) {
+    logger.warn(`[Security] Role ${roleNum} has no college_id. Defaulting to strict isolation.`);
+  }
+
   // Fix 4: Inject last conversation context for follow-up awareness
   const lastCtx = userLastContext.get(numericUserId);
   let classifierQuestion = question;
@@ -1429,7 +1479,6 @@ async function handleDbQuestion(
   const isIdentityMatched = IDENTITY_PATTERNS.test(question);
 
   let classificationResult: any = null;
-  let profile: any = null;
 
   if (isIdentityMatched) {
     classificationResult = { route: "db", scope: "personal", reason: "identity", tables_hint: "", usage: null };

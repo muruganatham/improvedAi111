@@ -113,10 +113,26 @@ export function checkRestrictedAccess(
     if (/(?:student\s*count|how many\s*students?)/.test(q) && !canAccess(userRole, "STUDENT_COUNT")) {
         return { allowed: false, reason: `${roleName} cannot view student counts` };
     }
-    if (/(?:compare|vs).*college/.test(q) && !canAccess(userRole, "COLLEGE_COMPARISON")) {
-        return { allowed: false, reason: `${roleName} cannot compare colleges` };
+    // Change 3: COLLEGE_BLOCKED_PATTERNS (Security Layer 2.5)
+    // If the user is college-scoped, actively block broad platform queries
+    if (isCollegeScoped(userRole)) {
+        const COLLEGE_BLOCKED_PATTERNS = [
+            /all\s+(?:colleges|institutions)/i,
+            /list\s+(?:all\s+)?colleges/i,
+            /(?:compare|vs|versus).*(?:college|institution)/i,
+            /(?:platform|overall|system|total).*(?:stat|report|student)/i,
+            /across\s+(?:all\s+)?colleges/i,
+            /(?:other|different)\s+colleges?/i
+        ];
+        if (COLLEGE_BLOCKED_PATTERNS.some(p => p.test(q))) {
+            return {
+                allowed: false,
+                reason: `${roleName}s can only view data for their assigned college. Platform-wide or cross-college queries are restricted.`
+            };
+        }
     }
-    if (/(?:platform|overall|system).*(?:stat|report)/.test(q) && !canAccess(userRole, "PLATFORM_STATS")) {
+
+    if (/(?:compare|vs).*college/.test(q) && !canAccess(userRole, "COLLEGE_COMPARISON")) {
         return { allowed: false, reason: `${roleName} cannot view platform stats` };
     }
 
