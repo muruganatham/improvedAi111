@@ -1550,12 +1550,12 @@ async function handleDbQuestion(
     return response;
   }
 
-  // ── HARD BLOCK: restricted scope for students on general route ──
-  // Fix for Bug 3 (T1-Q7): Only block students (Role 7), Admins (1, 2) should be allowed to ask architecture questions.
-  if (route === "general" && scope === "restricted" && roleNum === 7) {
+  // ── HARD BLOCK: restricted scope on general route ──
+  // Fix for Quick Win #2: Block EVERYONE (not just students) from asking for source code/architecture
+  if (route === "general" && scope === "restricted") {
     const elapsed = Date.now() - startTime;
     const response = {
-      report: "I cannot discuss internal system architecture, source code, or platform build details. For technical information, please contact your administrator.",
+      report: "I cannot discuss internal system architecture, source code, or platform build details. This is restricted information.",
       sql: null, steps: 0,
       inputToken: totalInputToken, outputToken: totalOutputToken,
       responseTime: elapsed,
@@ -1645,6 +1645,29 @@ async function handleDbQuestion(
     // STEP 3: Build scope prompt for LLM
     const collegeId = profile?.college_id || null;
     const collegeShort = profile?.college_short_name || null;
+
+    // STEP 3.5 (Quick Win #5): Friendly No-Data Response
+    // If user is a student and has zero enrolled courses, bypass LLM entirely to save 50s timeouts.
+    if (roleNum === 7) {
+      const courseCheckRes = await runQuery(`
+        SELECT COUNT(*) as count FROM course_wise_segregations 
+        WHERE user_id = ${numericUserId} AND status = 1
+      `);
+      const courseCount = courseCheckRes.rows?.[0]?.count || 0;
+      if (courseCount === 0) {
+        logger.info(`[No-Data Fast Path] User ${numericUserId} has 0 courses. Returning friendly onboarding message.`);
+        const elapsed = Date.now() - startTime;
+        const response = {
+          report: "It looks like you don't have any active courses assigned to you yet. 🎓\n\nOnce you are enrolled in a course and begin practicing your coding or MCQs, I will be able to track your progress, assess your skills, and guide you towards placements!",
+          sql: null, steps: 0,
+          inputToken: totalInputToken, outputToken: totalOutputToken,
+          responseTime: elapsed,
+          responseTimeSec: (elapsed / 1000).toFixed(1),
+        };
+        setCache(responseCacheKey, response, 5 * 60_000);
+        return response;
+      }
+    }
 
     // Pre-fetch dynamic table prefixes using cam.db (NOT college_short_name!)
     // cam.db is the ACTUAL table prefix — handles mismatches like dotlab≠demolab, skacas≠skasc

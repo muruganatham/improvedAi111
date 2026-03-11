@@ -77,7 +77,8 @@ FOLLOW-UP QUESTIONS:
 
 CAREER/PLACEMENT QUESTIONS:
 - "which company", "am I eligible", "placement", "job ready", 
-  "career options", "can I get placed", "hiring"
+  "career options", "can I get placed", "hiring", "software development role",
+  "developer role", "job title"
   → route: "db", scope: "personal"
   → reason: "career assessment needs student skill data"
   The agent should FIRST fetch the student's courses, progress, and scores,
