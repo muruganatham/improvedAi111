@@ -889,7 +889,12 @@ const CORE_RESPONSE_STYLE = `
 - Keep reports under 150-200 words. Use short tables or bullet points for data.
 - Only suggest a follow-up if the answer is incomplete or ambiguous. Do NOT add follow-ups to simple counts, lists, or factual answers.
 - Do NOT use emojis or icons. Keep responses professional and clean.
-- Format: Use PURE PLAINTEXT. Do NOT use any markdown formatting, asterisks (*), or bold text formatting. No ## headings for short answers.
+- FORMAT: Use rich markdown formatting for readability:
+  • Use **bold** for key terms, names, and important numbers.
+  • Use bullet points (- ) for lists.
+  • Use ## section headers ONLY for multi-section responses (dashboards, career advice). Do NOT use headers for short 1-2 sentence answers.
+  • Use markdown tables for data with 2+ rows.
+  • Keep formatting clean and consistent — no excessive decoration.
 `;
 
 // LLM LAYER — Only for insights and general knowledge. NEVER for numbers.
