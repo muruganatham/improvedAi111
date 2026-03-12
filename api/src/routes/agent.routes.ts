@@ -789,6 +789,50 @@ function buildScopePrompt(
   prompt += `- NEVER return passwords, tokens, API keys, OTPs from any table.\n`;
   prompt += `- NEVER expose password columns even if asked directly.\n`;
 
+  // SQL Query Templates to prevent token-heavy discovery steps
+  prompt += `
+COMMON QUERY PATTERNS (use these directly, don't discover separately):
+1. TOPPERS / LEADERBOARD:
+   SELECT u.name, SUM(cws.score) AS total_score
+   FROM course_wise_segregations cws
+   JOIN users u ON cws.user_id = u.id
+   JOIN courses c ON cws.course_id = c.id
+   WHERE c.course_name LIKE '%{keyword}%'
+     AND cws.college_id = {college_id}  -- if college specified
+     AND cws.status = 1 AND cws.score > 0
+   GROUP BY u.id, u.name
+   ORDER BY total_score DESC LIMIT 10;
+2. STUDENT'S OWN COURSES:
+   SELECT DISTINCT c.course_name
+   FROM course_wise_segregations cws
+   JOIN courses c ON cws.course_id = c.id
+   WHERE cws.user_id = {userId};
+   -- NEVER query 'courses' table alone for student's courses!
+3. STUDENT PROGRESS:
+   SELECT c.course_name, cws.type,
+     cws.progress, cws.score, cws.time_spend
+   FROM course_wise_segregations cws
+   JOIN courses c ON cws.course_id = c.id
+   WHERE cws.user_id = {userId};
+4. COLLEGE LOOKUP:
+   -- Use LIKE on both college_name AND college_short_name:
+   SELECT id, college_name FROM colleges 
+   WHERE college_name LIKE '%{keyword}%' 
+      OR college_short_name LIKE '%{keyword}%';
+5. COURSE LOOKUP:
+   SELECT id, course_name FROM courses
+   WHERE course_name LIKE '%{keyword}%' AND status = 1;
+6. STUDENT COUNT:
+   SELECT COUNT(DISTINCT cws.user_id) AS total
+   FROM course_wise_segregations cws
+   WHERE cws.college_id = {college_id};
+
+IMPORTANT RULES:
+- Use JOINs in a SINGLE query. Don't discover IDs in separate steps.
+- course_wise_segregations (CWS) is the MAIN table for all progress data.
+- 'courses' table is the catalog. For student's courses, ALWAYS use CWS.
+- College can be matched by college_name OR college_short_name.\n`;
+
   // Student/Content Creator specific security rules
   if (roleNum >= 6) {
     prompt += `\nSECURITY: NEVER reveal internal details to students:\n`;
