@@ -191,7 +191,7 @@ export function getScopeDescription(roleNum: number): string {
  */
 export const TABLE_SCOPE_MAP: Record<string, { isPublicCatalog?: boolean; hasUserId?: boolean; userColumn?: string }> = {
     // Public catalog tables — no user_id filter needed
-    'certificates': { isPublicCatalog: true },
+    'certificates': { hasUserId: true, userColumn: 'user_id' },
     'courses': { isPublicCatalog: true },
     'colleges': { isPublicCatalog: true },
     'departments': { isPublicCatalog: true },

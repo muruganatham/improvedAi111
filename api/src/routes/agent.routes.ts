@@ -13,7 +13,7 @@
 import { Hono } from "hono";
 import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
-// import { createOpenAI } from "@ai-sdk/openai"; // DeepSeek backup
+// import { createOpenAI } from "@ai-sdk/openai"; // DeepSeek backup (Decommissioned)
 import { getAvailableModels } from "../agent-lib/ai-models";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { databaseConnectionService } from "../services/database-connection.service";
@@ -26,7 +26,15 @@ const logger = loggers.agent();
 export const agentRoutes = new Hono();
 
 // Fix 4: Follow-up memory — stores last Q&A per user for context awareness
-const userLastContext = new Map<number, { question: string, answer: string, sql: string }>();
+const userLastContext = new Map<number, { question: string, answer: string, sql: string, ts: number }>();
+
+// Cleanup old context every 30 mins to prevent memory leaks (Audit Fix #8)
+setInterval(() => {
+  const cutoff = Date.now() - 30 * 60_000;
+  for (const [key, val] of userLastContext.entries()) {
+    if (val.ts < cutoff) userLastContext.delete(key);
+  }
+}, 30 * 60_000);
 
 const dbName = process.env.DB_NAME || "coderv4";
 const dbMock = { _id: "000000000000000000000002", type: "mysql" } as any;
@@ -255,7 +263,6 @@ function buildRoleTailoredSchema(roleNum: number, scope: string): string {
   if (schemaHintCache[roleNum]) return schemaHintCache[roleNum];
 
   const isStudentOnly = roleNum === 7;  // Only Student is restricted now (Trainer & Content Creator promoted to admin)
-  const isCollegeScoped = roleNum >= 3 && roleNum <= 4;  // Only CollegeAdmin(3) and Staff(4)
 
   let schema = "DATABASE SCHEMA (live from DB — use these columns directly):\n";
 
@@ -898,7 +905,7 @@ const CORE_RESPONSE_STYLE = `
 `;
 
 // LLM LAYER — Only for insights and general knowledge. NEVER for numbers.
-const GENERAL_KNOWLEDGE_PROMPT = `You are Devora AI — a helpful assistant for an online coding education platform.
+const GENERAL_KNOWLEDGE_PROMPT = `You are Devero AI — a helpful assistant for an online coding education platform.
 The user asked a general/conceptual question (NOT a data query).
 
 RESPONSE RULES:
@@ -1096,10 +1103,9 @@ async function handleWithTools(
 
   let followUpContext = "";
   if (history && history.length > 0) {
-    const contextExchanges = history.slice(-6);
     followUpContext = `
 PREVIOUS CONVERSATION CONTEXT:
-${contextExchanges.map(h => `${h.role === 'user' ? 'Question' : 'Answer'}: ${h.content}`).join('\n')}
+${history.map(h => `${h.role === 'user' ? 'Question' : 'Answer'}: ${h.content}`).join('\n')}
 
 IMPORTANT: If the user's current question was ALREADY answered in the conversation above, respond with that answer directly. Do NOT run any SQL queries.
 If it's a follow-up question, reuse the relevant tables/filters from the previous queries above.`;
@@ -1108,7 +1114,7 @@ If it's a follow-up question, reuse the relevant tables/filters from the previou
   // Scope is passed directly from routing
 
 
-  const systemPrompt = `You are Devora AI — expert SQL analyst for coderv4 database (TiDB/MySQL).
+  const systemPrompt = `You are Devero AI — expert SQL analyst for coderv4 database (TiDB/MySQL).
 User: id=${userId}, role=${roleNum} (${roleName})
 
 ${scopePrompt}
@@ -1629,7 +1635,7 @@ async function handleDbQuestion(
         responseTimeSec: (identityElapsed / 1000).toFixed(1),
       };
       setCache(responseCacheKey, response, 5 * 60_000);
-      userLastContext.set(numericUserId, { question, answer: response.report || '', sql: '' });
+      userLastContext.set(numericUserId, { question, answer: response.report || '', sql: '', ts: Date.now() });
       return response;
     } // end of else (data found)
   } // end of identity fast-path
@@ -1646,6 +1652,7 @@ async function handleDbQuestion(
       responseTimeSec: (elapsed / 1000).toFixed(1),
     };
     setCache(responseCacheKey, response, 5 * 60_000);
+    userLastContext.set(numericUserId, { question, answer: response.report || '', sql: '', ts: Date.now() }); // Audit Fix #2: Greeting context
     return response;
   }
 
@@ -1666,6 +1673,17 @@ async function handleDbQuestion(
 
   // ── GENERAL KNOWLEDGE (no DB) ──
   if (route === "general") {
+    // Audit Fix #10: Check history cache for general questions too
+    if (cachedAnswer) {
+      logger.info(`[history-cache] HIT — returning cached answer for: "${question.slice(0, 50)}"`);
+      return {
+        report: cachedAnswer, sql: null, steps: 0,
+        inputToken: 0, outputToken: 0,
+        responseTime: Date.now() - startTime,
+        responseTimeSec: ((Date.now() - startTime) / 1000).toFixed(1),
+      };
+    }
+
     const reasonerModel = makeModel();
     const chatModel = makeModel();
     try {
@@ -1714,7 +1732,7 @@ async function handleDbQuestion(
         responseTimeSec: (elapsed / 1000).toFixed(1),
       };
       setCache(responseCacheKey, response, 5 * 60_000);
-      userLastContext.set(numericUserId, { question, answer: response.report || '', sql: '' });
+      userLastContext.set(numericUserId, { question, answer: response.report || '', sql: '', ts: Date.now() });
       return response;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1848,7 +1866,7 @@ async function handleDbQuestion(
     setCache(responseCacheKey, response, 5 * 60_000);
 
     // Fix 4: Save last Q&A for follow-up context
-    userLastContext.set(numericUserId, { question, answer: response.report || '', sql: result.sql || '' });
+    userLastContext.set(numericUserId, { question, answer: response.report || '', sql: result.sql || '', ts: Date.now() });
 
     return response;
 

@@ -8,7 +8,7 @@ import { loggers } from "../logging";
 
 const logger = loggers.agent();
 
-// --- Option B: Gemini 2.0 Flash (ACTIVE) ---
+// --- Option B: Gemini 2.5 Flash (ACTIVE) ---
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_AI_API_KEY,
 });
