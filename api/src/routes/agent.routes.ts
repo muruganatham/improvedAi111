@@ -1485,7 +1485,7 @@ async function handleDbQuestion(
   // Fix 4: Inject last conversation context for follow-up awareness
   const lastCtx = userLastContext.get(numericUserId);
   let classifierQuestion = question;
-  if (lastCtx && /^(and |what about |how about |same for |also |and\?|among them|which one|who is best|from those|the best one|sort by|show pending|show active)/i.test(question.trim())) {
+  if (lastCtx && /^(and |what about |how about |how come|how\??$|why\??$|explain|tell me more|more details|details|elaborate|same for |also |and\?|among them|which one|who is best|from those|the best one|sort by|show pending|show active|compare|vs |versus )/i.test(question.trim())) {
     // Prepend context so classifier understands this is a follow-up
     classifierQuestion = `[Follow-up to: "${lastCtx.question}"] ${question}`;
   }
@@ -1613,6 +1613,7 @@ async function handleDbQuestion(
         responseTimeSec: (identityElapsed / 1000).toFixed(1),
       };
       setCache(responseCacheKey, response, 5 * 60_000);
+      userLastContext.set(numericUserId, { question, answer: response.report || '', sql: '' });
       return response;
     } // end of else (data found)
   } // end of identity fast-path
@@ -1697,6 +1698,7 @@ async function handleDbQuestion(
         responseTimeSec: (elapsed / 1000).toFixed(1),
       };
       setCache(responseCacheKey, response, 5 * 60_000);
+      userLastContext.set(numericUserId, { question, answer: response.report || '', sql: '' });
       return response;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
