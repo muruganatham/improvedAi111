@@ -949,7 +949,7 @@ const CORE_RESPONSE_STYLE = `
 `;
 
 // LLM LAYER — Only for insights and general knowledge. NEVER for numbers.
-const GENERAL_KNOWLEDGE_PROMPT = `You are Devero AI — a helpful assistant for an online coding education platform.
+const GENERAL_KNOWLEDGE_PROMPT = `You are Devora AI — a helpful assistant for an online coding education platform.
 The user asked a general/conceptual question (NOT a data query).
 
 RESPONSE RULES:
@@ -1036,7 +1036,7 @@ function getGreeting(userName: string, roleName: string, collegeName: string | n
   // ── SUPERADMIN / ADMIN ──
   if (roleName === "SuperAdmin" || roleName === "Admin") {
     let greeting = `Hello ${userName}! Welcome back. 🚀\n`;
-    greeting += `I am **Devero AI**, your platform's high-intelligence data analyst. I'm here to help you monitor performance and optimize educational outcomes.\n\n`;
+    greeting += `I am **Devora AI**, your platform's high-intelligence data analyst. I'm here to help you monitor performance and optimize educational outcomes.\n\n`;
     greeting += `Try asking:\n`;
     if (ctx.topColleges?.length >= 2) {
       greeting += `- Compare ${ctx.topColleges[0].college_name} vs ${ctx.topColleges[1].college_name}\n`;
@@ -1051,7 +1051,7 @@ function getGreeting(userName: string, roleName: string, collegeName: string | n
   // ── COLLEGE ADMIN ──
   if (roleName === "CollegeAdmin") {
     let greeting = `Hello ${userName}! Welcome back. 🏛️\n`;
-    greeting += `I am **Devero AI**, your dedicated college data companion. I'm here to help you track your campus progress and identify growth opportunities.\n\n`;
+    greeting += `I am **Devora AI**, your dedicated college data companion. I'm here to help you track your campus progress and identify growth opportunities.\n\n`;
     if (collegeName) {
       greeting += `Your College: ${collegeName}\n`;
       if (ctx.collegeStudents) greeting += `- ${ctx.collegeStudents} active students\n`;
@@ -1077,7 +1077,7 @@ function getGreeting(userName: string, roleName: string, collegeName: string | n
   // ── STAFF / TRAINER ──
   if (roleName === "Staff" || roleName === "Trainer") {
     let greeting = `Hello ${userName}! Welcome back. 👨‍🏫\n`;
-    greeting += `I am **Devero AI**, your teaching and analytics assistant. I'm here to help you monitor student performance and drive classroom success.\n\n`;
+    greeting += `I am **Devora AI**, your teaching and analytics assistant. I'm here to help you monitor student performance and drive classroom success.\n\n`;
     if (collegeName) {
       greeting += `Your College: ${collegeName}\n`;
       if (ctx.collegeStudents) greeting += `- ${ctx.collegeStudents} students under your watch\n`;
@@ -1100,7 +1100,7 @@ function getGreeting(userName: string, roleName: string, collegeName: string | n
 
   // ── STUDENT ──
   let greeting = `Hello ${userName}! Welcome back. 🚀\n`;
-  greeting += `I am **Devero AI**, your personal academic mentor and career guide. I'm here to help you master your courses and land your dream job!\n\n`;
+  greeting += `I am **Devora AI**, your personal academic mentor and career guide. I'm here to help you master your courses and land your dream job!\n\n`;
   if (ctx.studentCourses?.length > 0) {
     greeting += `Your Courses:\n`;
     for (const c of ctx.studentCourses) {
@@ -1158,7 +1158,7 @@ If it's a follow-up question, reuse the relevant tables/filters from the previou
   // Scope is passed directly from routing
 
 
-  const systemPrompt = `You are Devero AI — expert SQL analyst for coderv4 database (TiDB/MySQL).
+  const systemPrompt = `You are Devora AI — expert SQL analyst for coderv4 database (TiDB/MySQL).
 User: id=${userId}, role=${roleNum} (${roleName})
 
 ${scopePrompt}
