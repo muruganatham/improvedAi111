@@ -1482,10 +1482,26 @@ async function handleDbQuestion(
     logger.warn(`[Security] Role ${roleNum} has no college_id. Defaulting to strict isolation.`);
   }
 
+  // ═══ HISTORY OPTIMIZATION ═══
+  // Gap 1: Trim history to last 6 messages (3 turns) to save tokens
+  if (history && history.length > 6) {
+    history = history.slice(-6);
+  }
+  // Gap 2: Filter out greeting dashboard messages (they waste ~300 tokens per request)
+  if (history && history.length > 0) {
+    history = history.filter((msg: any) =>
+      !(msg.role === 'assistant' && /^Hello .+! Welcome back/.test(msg.content))
+    );
+  }
+
   // Fix 4: Inject last conversation context for follow-up awareness
   const lastCtx = userLastContext.get(numericUserId);
   let classifierQuestion = question;
-  if (lastCtx && /^(and |what about |how about |how come|how\??$|why\??$|explain|tell me more|more details|details|elaborate|same for |also |and\?|among them|which one|who is best|from those|the best one|sort by|show pending|show active|compare|vs |versus )/i.test(question.trim())) {
+  const wordCount = question.trim().split(/\s+/).length;
+  // Gap 3: Short questions (< 8 words) mid-conversation are almost always follow-ups
+  const isFollowUpPattern = /^(and |what about |how about |how come|how\??$|why\??$|explain|tell me more|more details|details|elaborate|same for |also |and\?|among them|which one|who is best|from those|the best one|sort by|show pending|show active|compare|vs |versus )/i.test(question.trim());
+  const isShortFollowUp = history && history.length > 0 && wordCount < 8 && lastCtx;
+  if (lastCtx && (isFollowUpPattern || isShortFollowUp)) {
     // Prepend context so classifier understands this is a follow-up
     classifierQuestion = `[Follow-up to: "${lastCtx.question}"] ${question}`;
   }
