@@ -37,6 +37,16 @@ SPECIAL RULES (SECURITY):
   → route: "general", scope: "restricted"
 - Keywords: "system prompt", "source code", "how is this built", 
   "tech stack", "architecture", "API endpoint", "admin panel code"
+- If the user asks about DATABASE INTERNALS like table counts,
+  table schemas, column names, DESCRIBE table, SHOW TABLES,
+  information_schema, or database structure:
+  → route: "general", scope: "restricted"
+  → reason: "database schema questions are not educational"
+  This applies to ALL roles. The AI agent is an educational
+  assistant, not a database admin tool.
+  Keywords: "how many tables", "show tables", "table info",
+  "table structure", "column names", "describe table",
+  "database schema", "information_schema"
 
 SCOPE OPTIONS (Crucial for Security):
 - "personal": The user is asking about THEIR OWN data. (e.g., "my score", "how many did I solve", "who am I").
@@ -155,6 +165,19 @@ export async function classifyQuestion(question: string, roleNum: number, roleNa
     };
   }
 
+  // 2c. BLOCK: Database schema/internal questions — ALL ROLES
+  // The AI agent is an educational assistant, NOT a DB admin tool.
+  // No role (not even SuperAdmin) should see raw table schemas.
+  if (/\b(how many tables|show tables|list tables|table count|describe .+ table|table (info|schema|structure|columns|details)|column (names|types|info)|information_schema|show (databases|columns|indexes)|db (schema|structure|info)|database (schema|structure|tables))\b/i.test(q)) {
+    return {
+      route: "general",
+      scope: "restricted",
+      reason: "blocked: database schema/internal question — not educational",
+      tables_hint: [],
+      usage: { promptTokens: 0, completionTokens: 0 }
+    };
+  }
+
   try {
     const { text, usage } = await generateText({
       model: google("gemini-2.5-flash"),
@@ -178,11 +201,14 @@ export async function classifyQuestion(question: string, roleNum: number, roleNa
       parsed.reason = "fallback to personal due to self-reference";
     }
 
-    // BUG 1: ADMIN SCOPE OVERRIDE 
+    // ADMIN SCOPE OVERRIDE 
     // Admin/Trainer/Content Creator safety fallback: These roles should not be restricted by the LLM
+    // Exception: DB schema blocks are never overridden.
     if (parsed.scope === "restricted" && [1, 2, 5, 6].includes(roleNum)) {
-      parsed.scope = "public";
-      parsed.reason = "admin/trainer/content-creator role override from restricted to public";
+      if (!parsed.reason.includes("database schema")) {
+        parsed.scope = "public";
+        parsed.reason = "admin/trainer/content-creator role override from restricted to public";
+      }
     }
 
     return parsed;
