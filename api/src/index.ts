@@ -85,7 +85,12 @@ app.notFound(c => c.json({ success: false, error: "Not Found" }, 404));
 
 // Health check
 app.get("/health", c => {
-  return c.json({ status: "ok", timestamp: new Date().toISOString() });
+  return c.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    dbPools: databaseConnectionService.getStats(),
+  });
 });
 
 // Welcome endpoint
@@ -164,6 +169,28 @@ async function main(): Promise<void> {
   // TiDB Direct Mode — MongoDB not used
   logger.info("Running in TiDB Direct Mode. MongoDB is not required.");
 
+  // Pre-warm MySQL connection pool so first student request is fast
+  try {
+    const mongoose = await import("mongoose");
+    const pool = await databaseConnectionService.getConnection({
+      _id: new mongoose.Types.ObjectId("000000000000000000000002"),
+      type: "mysql",
+      connection: {
+        host: process.env.DB_HOST,
+        port: parseInt(process.env.DB_PORT || "4000"),
+        database: process.env.DB_NAME,
+        username: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : undefined,
+      },
+    } as any);
+    const conn = await pool.getConnection();
+    conn.release();
+    logger.info("MySQL pool pre-warmed ✅");
+  } catch (err) {
+    logger.warn("MySQL pre-warm failed (will connect on first request)", { error: err });
+  }
+
   // Pre-load full schema cache for AI agents (MakoAI-style)
   initSchemaCache().then(() => {
     logger.info("[schema-cache] Full schema pre-loaded for AI agents");
@@ -191,6 +218,17 @@ async function main(): Promise<void> {
     port,
   }, (info) => {
     console.log(`Listening on http://localhost:${info.port}`); // eslint-disable-line no-console
+
+    // Self-ping every 14 minutes to prevent Render cold starts
+    const renderUrl = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL;
+    if (renderUrl) {
+      setInterval(() => {
+        fetch(`${renderUrl}/health`)
+          .then(() => logger.info("Keep-alive ping sent"))
+          .catch(() => logger.warn("Keep-alive ping failed"));
+      }, 14 * 60 * 1000);
+      logger.info("Keep-alive self-ping enabled", { url: `${renderUrl}/health`, intervalMin: 14 });
+    }
   });
 }
 
